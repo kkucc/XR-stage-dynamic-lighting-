@@ -1,0 +1,23 @@
+# Elation Opti Tri Par White, 7-channel mode — the four side pars.
+#
+# Source: QLC+ stage project XRStage_default.qxw (fixture panel), Nov 2026.
+# The VP-Template Unreal library left channels 4, 5 and 7 unnamed or vague;
+# QLC+ shows that channel 5 is a STROBE, so it stays locked.
+# The two white emitters' real colour temperatures are not measured yet —
+# the cct values below are placeholders.
+#
+# Locked channels are always sent with their `lock` value and never follow input.
+
+name = "Elation Opti Tri Par White (7ch)"
+source = "QLC+ XRStage_default.qxw"
+footprint = 7
+
+channels = [
+  { offset = 1, attr = "white_1", cct = 6000, display = [0.95, 0.97, 1.00], note = "cool white (QLC+); cct not measured" },
+  { offset = 2, attr = "white_2", cct = 3000, display = [1.00, 0.80, 0.55], note = "warm white (QLC+); cct not measured" },
+  { offset = 3, attr = "amber",   display = [1.00, 0.55, 0.05] },
+  { offset = 4, attr = "ctemp",   lock = 0, note = "built-in colour temperature presets" },
+  { offset = 5, attr = "strobe",  lock = 0, note = "strobe — keep at 0" },
+  { offset = 6, attr = "dimmer" },
+  { offset = 7, attr = "curve",   lock = 0, note = "dimming curve setting, QLC+ sends 0" },
+]

@@ -1,0 +1,30 @@
+# ARRI Orbiter, 13 channels — QLC+ calls this mode "RGBAC Mode 13".
+#
+# Source: QLC+ stage project XRStage_default.qxw: patched at 53-65.
+# The VP-Template Unreal library is outdated here: it still has the Orbiter
+# at address 200 with 10 channels.
+#
+# CCT, green/magenta, zoom and focus are locked at 0, which is what QLC+ sends
+# in the stage's normal looks, so the software never changes the optic.
+# For accurate colour matching the plan is still to switch the Orbiter to its
+# x/y mode later — only with the stage team's permission.
+
+name = "ARRI Orbiter (RGBAC Mode 13, 13ch)"
+source = "QLC+ XRStage_default.qxw"
+footprint = 13
+
+channels = [
+  { offset = 1,  attr = "dimmer" },
+  { offset = 2,  attr = "red",   display = [1.00, 0.00, 0.00] },
+  { offset = 3,  attr = "green", display = [0.00, 1.00, 0.00] },
+  { offset = 4,  attr = "blue",  display = [0.00, 0.00, 1.00] },
+  { offset = 5,  attr = "amber", display = [1.00, 0.55, 0.00] },
+  { offset = 6,  attr = "cyan",  display = [0.00, 1.00, 1.00] },
+  { offset = 7,  attr = "lime",  display = [0.60, 1.00, 0.00] },
+  { offset = 8,  attr = "white", display = [1.00, 1.00, 1.00] },
+  { offset = 9,  attr = "cct",      lock = 0, note = "colour temperature" },
+  { offset = 10, attr = "gm",       lock = 0, note = "green/magenta point" },
+  { offset = 11, attr = "zoom",     lock = 0 },
+  { offset = 12, attr = "focus",    lock = 0 },
+  { offset = 13, attr = "reserved", lock = 0 },
+]

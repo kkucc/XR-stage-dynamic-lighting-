@@ -1,0 +1,91 @@
+# XR Stage (BUas) — network, safety limits and patch.
+#
+# Sources: XR Stage wiki (DMX + Unreal DMX Setup pages), the QLC+ stage project
+# C:\QLC+\projects\XRStage_default.qxw (fixtures + Art-Net settings, Nov 2026),
+# and the Stage_DMX_Library in github.com/BredaUniversityResearch/VP-Template.
+# Where they disagree, QLC+ wins: it is what the stage uses today.
+
+[network]
+target_ip = "10.55.4.7"      # ENTTEC ODE Mk2 in the rack (fixed IP; seen in QLC+ Nodes Tree)
+target_port = 6454
+universe = 1                 # Art-Net universe 1 — confirmed in QLC+ output settings
+input_universe = 1           # universe the proxy listens for (Unreal or QLC+)
+listen_ip = "0.0.0.0"
+listen_port = 6454
+fps = 44                     # the ODE Mk2 accepts at most 44 updates per second (wiki)
+
+[safety]
+max_flashes_per_second = 3   # photosensitivity limit: max 3 flashes in any 1 s window
+flash_threshold = 0.10       # a brightness swing of 10% or more counts as one transition
+smoothing_ms = 120           # time constant of the smoothing filter (0 = off)
+master = 1.0                 # global brightness ceiling, 0..1
+input_timeout_s = 2.0        # proxy: no input for this long -> fade to the home look
+passthrough_unpatched = true # proxy: channels outside this patch are forwarded unchanged
+
+# Fixtures. `home` is the fallback look (values 0..1 per attribute): the stage's
+# normal look as seen live from QLC+ — warm white at full, dimmer ~60%.
+# Names in brackets are the QLC+ names.
+
+[[fixture]]
+name = "Right back"            # [white right #1]
+profile = "white_par_7ch"
+address = 1
+zone = "side_right"
+home = { white_2 = 1.0, dimmer = 0.6 }
+
+[[fixture]]
+name = "Right front"           # [white right #2]
+profile = "white_par_7ch"
+address = 8
+zone = "side_right"
+home = { white_2 = 1.0, dimmer = 0.6 }
+
+[[fixture]]
+name = "Front Right"           # [rgb front #1]
+profile = "elation_opti_quad_par_8ch"   # Elation Opti Quad Par DMX8, per QLC+
+address = 15
+zone = "front_right"
+
+[[fixture]]
+name = "Front Middle"          # [rgb front #2]
+profile = "rgbw_par_8ch"
+address = 23
+zone = "front_center"
+
+[[fixture]]
+name = "Front Left"            # [rgb front #3]
+profile = "rgbw_par_8ch"
+address = 31
+zone = "front_left"
+
+[[fixture]]
+name = "Left front"            # [white left #1]
+profile = "white_par_7ch"
+address = 39
+zone = "side_left"
+home = { white_2 = 1.0, dimmer = 0.6 }
+
+[[fixture]]
+name = "Left back"             # [white left #2]
+profile = "white_par_7ch"
+address = 46
+zone = "side_left"
+home = { white_2 = 1.0, dimmer = 0.6 }
+
+[[fixture]]
+name = "Orbiter"               # [Orbiter] — the Unreal library still says 200, QLC+ says 53
+profile = "arri_orbiter_13ch"
+address = 53
+zone = "key"
+
+[[fixture]]
+name = "Head 1"                # [7x10W Mini Moving Head]
+profile = "miniwash_710_9ch"
+address = 66
+zone = "effects"
+
+[[fixture]]
+name = "Head 2"                # [7x10W Mini Moving Head]
+profile = "miniwash_710_9ch"
+address = 77
+zone = "effects"

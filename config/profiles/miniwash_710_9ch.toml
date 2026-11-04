@@ -1,0 +1,26 @@
+# "7x10W Mini Moving Head", 9-channel mode — the two moving heads.
+#
+# Source: QLC+ stage project XRStage_default.qxw (patched at 66-74 and 77-85).
+# Channel layout from the Algam Lighting Miniwash 710 manual (9-channel mode),
+# which matches 7x10 W and 9 channels — VERIFY in QLC+'s fixture panel.
+#
+# Safety:
+# - pan, tilt and speed are locked: the software cannot move the heads yet
+# - the dimmer is limited to 0-134: 135-239 is the strobe range on this channel
+# - reset is locked at 0
+
+name = "7x10W mini moving head / Miniwash 710 (9ch)"
+source = "QLC+ XRStage_default.qxw + Miniwash 710 manual — VERIFY"
+footprint = 9
+
+channels = [
+  { offset = 1, attr = "pan",    lock = 0, note = "movement locked for now" },
+  { offset = 2, attr = "tilt",   lock = 0, note = "movement locked for now" },
+  { offset = 3, attr = "dimmer", min = 0, max = 134, note = "135-239 would be strobe, so never sent" },
+  { offset = 4, attr = "red",    display = [1.0, 0.0, 0.0] },
+  { offset = 5, attr = "green",  display = [0.0, 1.0, 0.0] },
+  { offset = 6, attr = "blue",   display = [0.0, 0.0, 1.0] },
+  { offset = 7, attr = "white",  display = [1.0, 1.0, 1.0] },
+  { offset = 8, attr = "speed",  lock = 0, note = "pan/tilt speed" },
+  { offset = 9, attr = "reset",  lock = 0, note = "150-200 resets the head — keep at 0" },
+]

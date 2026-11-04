@@ -1,0 +1,20 @@
+# Elation Opti Quad Par DMX8, 8-channel mode — Front Right ([rgb front #1] in QLC+).
+#
+# Source: QLC+ stage project XRStage_default.qxw (fixture panel), Nov 2026.
+# A different model from Front Middle / Front Left, which is why its dimmer
+# is on ch8 instead of ch7.
+
+name = "Elation Opti Quad Par DMX8 (8ch)"
+source = "QLC+ XRStage_default.qxw"
+footprint = 8
+
+channels = [
+  { offset = 1, attr = "red",    display = [1.0, 0.0, 0.0] },
+  { offset = 2, attr = "green",  display = [0.0, 1.0, 0.0] },
+  { offset = 3, attr = "blue",   display = [0.0, 0.0, 1.0] },
+  { offset = 4, attr = "white",  display = [1.0, 1.0, 1.0] },
+  { offset = 5, attr = "macro",  lock = 0, note = "colour macros" },
+  { offset = 6, attr = "strobe", lock = 0, note = "strobe — keep at 0" },
+  { offset = 7, attr = "colour_change", lock = 0, note = "colour change program" },
+  { offset = 8, attr = "dimmer" },
+]

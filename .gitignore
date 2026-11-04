@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.DS_Store
+# wiki exports contain passwords — keep them out of Git
+*.pdf

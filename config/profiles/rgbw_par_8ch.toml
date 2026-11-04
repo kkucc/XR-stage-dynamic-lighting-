@@ -1,0 +1,22 @@
+# RGBW LED par, 8 channels — Front Left and Front Middle.
+# The wiki calls these "full RGB pars"; the Unreal library defines a white channel too.
+#
+# Source: Stage_DMX_Library in the VP-Template repo (saved with UE 5.1).
+# Live check on the stage: QLC+ sends these pars' dimmer on ch7 (DMX 29 and 37),
+# matching the library. Model name still to be read from QLC+'s fixture panel.
+# Channel 6 is labelled "Burst" — almost certainly a strobe, so it is locked.
+
+name = "RGBW par 8ch (dimmer on ch7)"
+source = "VP-Template Stage_DMX_Library, dimmer position checked live"
+footprint = 8
+
+channels = [
+  { offset = 1, attr = "red",     display = [1.0, 0.0, 0.0] },
+  { offset = 2, attr = "green",   display = [0.0, 1.0, 0.0] },
+  { offset = 3, attr = "blue",    display = [0.0, 0.0, 1.0] },
+  { offset = 4, attr = "white",   display = [1.0, 1.0, 1.0] },
+  { offset = 5, attr = "unknown", lock = 0, note = "unnamed in library" },
+  { offset = 6, attr = "strobe",  lock = 0, note = "'Burst' in library — keep at 0" },
+  { offset = 7, attr = "dimmer" },
+  { offset = 8, attr = "unknown", lock = 0, note = "unnamed in library" },
+]
