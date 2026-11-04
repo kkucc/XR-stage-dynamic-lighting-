@@ -3,9 +3,11 @@
 # QLC+ treats both heads as the same 9-channel fixture, but this head does not
 # follow that layout — it is probably set to a different DMX mode in its own menu.
 # Checked live in QLC+ Simple Desk, Nov 2026: ch4 red, ch5 green, ch6 blue,
-# ch8 dimmer, ch9 must be 255 for any light. White is mixed from red + green + blue.
+# ch8 = shutter/strobe, ch9 = dimmer. White is mixed from red + green + blue.
+# ch8 gives steady light at 15-20 and strobes from 60 up (at a constant value, so
+# the flash guard cannot see it) — it stays locked at 18.
 
-name = "Moving head, left (9ch, dimmer on ch8)"
+name = "Moving head, left (9ch, ch8 shutter/strobe, ch9 dimmer)"
 source = "live test in QLC+ Simple Desk"
 footprint = 9
 
@@ -17,6 +19,6 @@ channels = [
   { offset = 5, attr = "green",   display = [0.0, 1.0, 0.0] },
   { offset = 6, attr = "blue",    display = [0.0, 0.0, 1.0] },
   { offset = 7, attr = "macro",   lock = 0, note = "white or colour presets — unclear; white is mixed from RGB" },
-  { offset = 8, attr = "dimmer" },
-  { offset = 9, attr = "shutter", lock = 255, note = "must be 255 for light; lower values may strobe" },
+  { offset = 8, attr = "shutter", lock = 18, note = "shutter/strobe: steady at 15-20 (tested), strobes from 60 up — never change" },
+  { offset = 9, attr = "dimmer",  note = "dimmer, smooth 30-255 (tested)" },
 ]

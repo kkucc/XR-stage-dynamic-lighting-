@@ -111,16 +111,17 @@ def test_left_head_layout(rig):
     frame = rig.render(states)
     assert frame[65] == 0 and frame[66] == 0             # DMX 66/67 pan, tilt locked
     assert frame[71] == 0                                # DMX 72 macro always 0
-    assert frame[73] == 255                              # DMX 74 shutter always open
-    assert rig.render(rig.zero_states())[71:74:2] == bytes([0, 255])
+    assert frame[72] == 18                               # DMX 73 shutter: steady, never strobe
+    assert rig.render(rig.zero_states())[71:73] == bytes([0, 18])
 
-    white = colour_to_state(f.profile, (1.0, 1.0, 1.0), 0.5)
+    white = colour_to_state(f.profile, (1.0, 1.0, 1.0), 0.8)
     assert white["red"] == white["green"] == white["blue"] == pytest.approx(1.0)
     states = rig.zero_states()
     states["Head left"] = white
     frame = rig.render(states)
     assert frame[68:71] == bytes([255, 255, 255])        # DMX 69-71 red, green, blue
-    assert frame[72] == 128                              # DMX 73 dimmer
+    assert frame[72] == 18                               # DMX 73 shutter still locked
+    assert abs(frame[73] - 204) <= 1                     # DMX 74 dimmer at 0.8
 
 
 def test_white_par_strobe_locked(rig):
