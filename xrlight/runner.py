@@ -162,7 +162,7 @@ SHORT = {"red": "R", "green": "G", "blue": "B", "white": "W", "white_1": "W1",
          "white_2": "W2", "amber": "A", "cyan": "C", "lime": "L", "dimmer": "Dim",
          "strobe": "Strb", "mode": "Mode", "unknown": "?", "ctemp": "CT", "curve": "Crv",
          "cct": "CCT", "gm": "GM", "zoom": "Zm", "focus": "Fo", "reserved": "Rsv",
-         "macro": "Mac", "colour_change": "CChg",
+         "macro": "Mac", "colour_change": "CChg", "shutter": "Shut",
          "pan": "Pan", "tilt": "Tilt", "speed": "Spd", "reset": "Rst"}
 
 

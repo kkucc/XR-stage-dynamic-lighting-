@@ -1,8 +1,10 @@
-# "7x10W Mini Moving Head", 9-channel mode — the two moving heads.
+# "7x10W Mini Moving Head", 9-channel mode — now used for the right head only
+# (77-85); the left head behaves differently, see moving_head_left_9ch.toml.
 #
 # Source: QLC+ stage project XRStage_default.qxw (patched at 66-74 and 77-85).
-# Channel layout from the Algam Lighting Miniwash 710 manual (9-channel mode),
-# which matches 7x10 W and 9 channels — VERIFY in QLC+'s fixture panel.
+# Channel layout from the Algam Lighting Miniwash 710 manual (9-channel mode).
+# Verified live on the right head, Nov 2026: pan = ch1, tilt = ch2, dimmer = ch3,
+# red/green/blue/white = ch4-ch7. Speed (ch8) and reset (ch9) not checked.
 #
 # Safety:
 # - pan, tilt and speed are locked: the software cannot move the heads yet

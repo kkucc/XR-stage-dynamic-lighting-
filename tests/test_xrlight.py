@@ -89,22 +89,38 @@ def test_patch_matches_qlc_project(rig):
     spans = {f.name: (f.address, f.last_address) for f in rig.fixtures}
     assert spans == {"Right back": (1, 7), "Right front": (8, 14), "Front Right": (15, 22),
                      "Front Middle": (23, 30), "Front Left": (31, 38), "Left front": (39, 45),
-                     "Left back": (46, 52), "Orbiter": (53, 65), "Head 1": (66, 74),
-                     "Head 2": (77, 85)}
+                     "Left back": (46, 52), "Orbiter": (53, 65), "Head left": (66, 74),
+                     "Head right": (77, 85)}
     assert rig.problems() == []
 
 
-def test_heads_cannot_move_or_strobe(rig):
+def test_right_head_cannot_move_or_strobe(rig):
     states = rig.zero_states()
-    for name in ("Head 1", "Head 2"):
-        states[name].update(dimmer=1.0, red=1.0, pan=1.0, tilt=1.0, speed=1.0, reset=1.0)
+    states["Head right"].update(dimmer=1.0, red=1.0, pan=1.0, tilt=1.0, speed=1.0, reset=1.0)
     frame = rig.render(states)
-    for name in ("Head 1", "Head 2"):
-        f = rig.fixture(name)
-        i = f.address - 1
-        assert frame[i] == 0 and frame[i + 1] == 0          # pan, tilt locked
-        assert frame[i + 2] == 134                           # full dimmer stays below strobe range
-        assert frame[i + 7] == 0 and frame[i + 8] == 0      # speed, reset locked
+    i = rig.fixture("Head right").address - 1
+    assert frame[i] == 0 and frame[i + 1] == 0          # pan, tilt locked
+    assert frame[i + 2] == 134                           # full dimmer stays below strobe range
+    assert frame[i + 7] == 0 and frame[i + 8] == 0      # speed, reset locked
+
+
+def test_left_head_layout(rig):
+    f = rig.fixture("Head left")
+    states = rig.zero_states()
+    states["Head left"].update(pan=1.0, tilt=1.0, unknown=1.0, macro=1.0, shutter=0.0)
+    frame = rig.render(states)
+    assert frame[65] == 0 and frame[66] == 0             # DMX 66/67 pan, tilt locked
+    assert frame[71] == 0                                # DMX 72 macro always 0
+    assert frame[73] == 255                              # DMX 74 shutter always open
+    assert rig.render(rig.zero_states())[71:74:2] == bytes([0, 255])
+
+    white = colour_to_state(f.profile, (1.0, 1.0, 1.0), 0.5)
+    assert white["red"] == white["green"] == white["blue"] == pytest.approx(1.0)
+    states = rig.zero_states()
+    states["Head left"] = white
+    frame = rig.render(states)
+    assert frame[68:71] == bytes([255, 255, 255])        # DMX 69-71 red, green, blue
+    assert frame[72] == 128                              # DMX 73 dimmer
 
 
 def test_white_par_strobe_locked(rig):
@@ -181,6 +197,16 @@ def test_colour_to_state_white_par_follows_cct(rig):
     assert daylight["white_1"] > daylight["white_2"]     # cool dominates
     assert sunset["white_2"] > sunset["white_1"]         # warm dominates
     assert sunset["amber"] > 0
+
+
+def test_level_option(rig):
+    from functools import partial
+    from xrlight.cli import main
+    from xrlight.patterns import identify
+    targets, _ = partial(identify, level=0.8)(rig, 0.0)
+    assert targets["Right back"]["dimmer"] == pytest.approx(0.8)
+    with pytest.raises(SystemExit):                      # rejected before any socket opens
+        main(["test", "--level", "1.5"])
 
 
 def test_all_patterns_produce_valid_frames(rig):

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from functools import partial
 from pathlib import Path
 
 from .artnet import PortBusyError, parse_target
@@ -11,6 +12,7 @@ from .rig import Rig
 from .runner import run_monitor, run_pattern, run_proxy
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "config" / "stage.toml"
+LEVEL_PATTERNS = {"identify", "palette"}   # patterns that take a level argument
 
 
 def cmd_check(rig: Rig, args) -> None:
@@ -40,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     p_test.add_argument("--seconds", type=float, help="stop after N seconds")
     p_test.add_argument("--raw", action="store_true",
                         help="skip smoothing and flash guard (to fake an unsafe source)")
+    p_test.add_argument("--level", type=float,
+                        help="brightness 0..1 for identify and palette (default 0.3 / 0.6)")
 
     p_proxy = sub.add_parser("proxy", help="receive Art-Net, make it safe, forward it")
     p_proxy.add_argument("--target", help="IP[:PORT], default from config")
@@ -52,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     p_mon.add_argument("--seconds", type=float)
 
     args = parser.parse_args(argv)
+    if getattr(args, "level", None) is not None and not 0.0 <= args.level <= 1.0:
+        parser.error("--level must be between 0 and 1")
     try:
         rig = Rig.load(args.config)
     except (OSError, ValueError, KeyError) as exc:
@@ -65,7 +71,10 @@ def main(argv: list[str] | None = None) -> int:
             cmd_check(rig, args)
         elif args.command == "test":
             target = parse_target(args.target) if args.target else default_target
-            run_pattern(rig, PATTERNS[args.pattern], target, raw=args.raw, seconds=args.seconds)
+            pattern = PATTERNS[args.pattern]
+            if args.level is not None and args.pattern in LEVEL_PATTERNS:
+                pattern = partial(pattern, level=args.level)
+            run_pattern(rig, pattern, target, raw=args.raw, seconds=args.seconds)
         elif args.command == "proxy":
             target = parse_target(args.target) if args.target else default_target
             listen = (n.listen_ip, args.listen_port or n.listen_port)

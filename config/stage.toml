@@ -78,14 +78,15 @@ profile = "arri_orbiter_13ch"
 address = 53
 zone = "key"
 
+# Moving heads: left/right as seen from the brain bar desk.
 [[fixture]]
-name = "Head 1"                # [7x10W Mini Moving Head]
-profile = "miniwash_710_9ch"
+name = "Head left"             # [7x10W Mini Moving Head]
+profile = "moving_head_left_9ch"
 address = 66
 zone = "effects"
 
 [[fixture]]
-name = "Head 2"                # [7x10W Mini Moving Head]
+name = "Head right"            # [7x10W Mini Moving Head]
 profile = "miniwash_710_9ch"
 address = 77
 zone = "effects"
