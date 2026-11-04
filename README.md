@@ -22,6 +22,15 @@ python -m xrlight check      # prints the patch, locked channels and notes
 I am connection so far via Ethernet cable, trying to think how to make with out it.
 
 ## Commands
+
+| Command | What it does |
+|---|---|
+| `check` | validate the config and print the patch and screen zones |
+| `test --pattern P` | send a test pattern (`identify`, `palette`, `home`, `flash-test`) |
+| `proxy` | receive Art-Net (Unreal/QLC+), make it safe, forward it to the ODE |
+| `monitor` | show incoming Art-Net as fixtures in the terminal |
+| `screen` | lights follow the picture on one of the Mac's displays (the LED wall feed) |
+
 To test connection 
 ```bash
 python -m xrlight monitor --port 6454  
@@ -74,6 +83,47 @@ before running `proxy` or `monitor` on port 6454: only one program can listen th
 5. If the lights stop responding entirely, the ODE Mk2 has probably frozen: power-cycle
    it (barrel plug, rack behind the screen), as described in the DMX Troubleshooting page.
 
+## Video mode on the stage
+
+The lights follow what the Mac sends to the LED wall. Each fixture with a `[[zone]]` in
+`config/stage.toml` takes the average colour of its part of the picture; the rest keep
+their home look.
+
+1. Signal path, as in the wiki page "Hooking up HDMI": Mac → HDMI → capture card IN on
+   the Recording PC → OBS (source: Blackmagic device, HDMI) → Fullscreen Projector on
+   the HELIOS display. Send 1920x1080 from the Mac.
+2. In QLC+, untick **Output** for the universe so it does not fight xrlight for the lights.
+3. Find the wall output and start:
+   ```bash
+   python -m xrlight screen --list-monitors
+   python -m xrlight screen --monitor N
+   ```
+   Options: `--gain` (0..2), `--fps` (capture rate, default 30; DMX output stays at the
+   config fps), `--target`, `--seconds`. Every second it prints the capture fps, output
+   fps and how many frames the flash guard held back. Ctrl+C fades to the home look.
+   A `[[zone]]` can also have `gain = 0.5` (0..2, default 1): it scales that zone's
+   brightness on top of `--gain`. The white side pars use 0.5 as the side-fill ratio;
+   edit the value and restart `xrlight screen` to tune it.
+   The `[screen]` section sets the brightness curve: each zone's level is
+   `gain × zone gain × curve(L)`, with L the luminance of the zone's mean colour and
+   `curve(L) = (max(0, L − black_floor) / (1 − black_floor)) ** gamma`. Anything darker
+   than `black_floor` (default 0.08, range 0..0.5) is off, and a higher `gamma` (default
+   2.0, range 0.5..4) dims mid tones, so dark scenes stay dark. Tune live the same way:
+   edit, restart `screen`.
+   The moving heads do not move (pan and tilt are locked). To aim one, find the position
+   in QLC+ Simple Desk and copy the values into its `[[fixture]]` as
+   `fixed = { pan = 120, tilt = 80 }` (DMX 0..255; only locked channels can be fixed).
+   `xrlight check` shows the values in use.
+4. The wall shows the picture later than the Mac does (capture card, OBS, processor).
+   Raise `--delay-ms` until the lights and the wall change together.
+5. macOS asks for **Screen Recording** permission (System Settings → Privacy & Security →
+   Screen Recording) for the terminal app you run from. Switch it on and reopen the app;
+   without it `screen` stops with a message.
+
+Known limitation: in reality the front lights would carry what is *behind* the camera,
+which the wall does not show. Mapping wall zones straight onto the fixtures is a first
+approximation; an Unreal SceneCapture of the virtual surroundings is the better source later.
+
 ## Verified vs assumed
 
 | Item | Status | Source |
@@ -113,12 +163,8 @@ not implemented yet.
 ## Next steps
 
 - Audio input (`sounddevice` + NumPy FFT, beat detection with `aubio`) as a new source.
-- Wall/scene sampling: zones from an Unreal render target or from frames on the Mac.
+- Scene sampling from an Unreal SceneCapture instead of the wall picture (see Video mode).
 - Orbiter in its x/y 16-bit mode (with permission) and an `arri_orbiter_xy` profile.
 - Calibration: measure each fixture's real colour per channel and replace the guesses.
 - Measurements for the report: ΔE between wall and light, latency, setup time vs manual.
 
-## Notes
-
-The wiki export contains the stage PC password — do not commit those PDFs to Git or quote
-them in documentation.

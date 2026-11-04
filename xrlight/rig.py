@@ -3,7 +3,8 @@
 A *state* is what the software wants a fixture to do, as a dict of attribute
 values between 0 and 1, for example {"red": 1.0, "dimmer": 0.5}. The rig turns
 states into a 512-byte DMX frame (render) and a received frame back into states
-(decode). Locked channels are always rendered with their fixed value.
+(decode). Locked channels are always rendered with their fixed value: the
+profile's `lock`, or the fixture's `fixed` value for that attribute if it has one.
 """
 from __future__ import annotations
 
@@ -92,6 +93,7 @@ class Fixture:
     address: int                     # 1-based DMX start address
     zone: str = ""
     home: State = field(default_factory=dict)
+    fixed: dict[str, int] = field(default_factory=dict)   # attr -> DMX value for locked channels
 
     @property
     def last_address(self) -> int:
@@ -100,6 +102,38 @@ class Fixture:
     def index(self, channel: Channel) -> int:
         """0-based index of a channel inside the 512-byte universe."""
         return self.address - 1 + channel.offset - 1
+
+    def lock_value(self, channel: Channel) -> int | None:
+        """DMX value of a locked channel on this fixture (None for free channels)."""
+        if not channel.locked:
+            return None
+        return self.fixed.get(channel.attr, channel.lock)
+
+
+@dataclass(frozen=True)
+class Zone:
+    """Part of the captured picture that drives one fixture in `screen` mode.
+
+    rect = (x0, y0, x1, y1) as fractions 0..1 of the display, y = 0 at the top.
+    gain (0..2) multiplies the zone's brightness level, on top of the global --gain.
+    """
+    fixture: str
+    rect: tuple[float, ...]
+    gain: float = 1.0
+
+
+@dataclass
+class Screen:
+    """Brightness curve for `screen` mode, applied to each zone's luminance L (0..1).
+
+    curve(L) = (max(0, L - black_floor) / (1 - black_floor)) ** gamma
+    """
+    gamma: float = 2.0
+    black_floor: float = 0.08
+
+    def curve(self, lum: float) -> float:
+        lifted = max(0.0, lum - self.black_floor) / (1.0 - self.black_floor)
+        return min(1.0, lifted) ** self.gamma
 
 
 @dataclass
@@ -160,10 +194,13 @@ def _validate_profile(p: Profile) -> None:
 
 
 class Rig:
-    def __init__(self, network: Network, safety: Safety, fixtures: list[Fixture]):
+    def __init__(self, network: Network, safety: Safety, fixtures: list[Fixture],
+                 zones: list[Zone] | None = None, screen: Screen | None = None):
         self.network = network
         self.safety = safety
         self.fixtures = fixtures
+        self.zones = zones or []
+        self.screen = screen or Screen()
 
     @classmethod
     def load(cls, path: str | Path) -> "Rig":
@@ -177,9 +214,15 @@ class Rig:
             if key not in profiles:
                 profiles[key] = load_profile(profile_dir / f"{key}.toml")
             home = {k: clamp01(float(v)) for k, v in raw.get("home", {}).items()}
+            fixed = dict(raw.get("fixed", {}))          # checked in problems()
             fixtures.append(Fixture(raw["name"], profiles[key], int(raw["address"]),
-                                    raw.get("zone", ""), home))
-        rig = cls(Network(**data.get("network", {})), Safety(**data.get("safety", {})), fixtures)
+                                    raw.get("zone", ""), home, fixed))
+        zones = [Zone(str(raw["fixture"]), tuple(float(v) for v in raw["rect"]),
+                      float(raw.get("gain", 1.0)))
+                 for raw in data.get("zone", [])]
+        screen = {k: float(v) for k, v in data.get("screen", {}).items()}
+        rig = cls(Network(**data.get("network", {})), Safety(**data.get("safety", {})),
+                  fixtures, zones, Screen(**screen))
         errors = rig.problems()
         if errors:
             raise ValueError("stage config problems:\n  " + "\n  ".join(errors))
@@ -202,6 +245,34 @@ class Rig:
             for attr in f.home:
                 if attr not in f.profile.by_attr:
                     out.append(f"{f.name}: home look uses unknown attribute '{attr}'")
+            locked = {c.attr for c in f.profile.channels if c.locked}
+            for attr, value in f.fixed.items():
+                if attr not in locked:
+                    out.append(f"{f.name}: fixed '{attr}' is not a locked channel of "
+                               f"{f.profile.key} (locked: {', '.join(sorted(locked)) or 'none'})")
+                if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255:
+                    out.append(f"{f.name}: fixed {attr} = {value!r} must be a whole number 0..255")
+        zoned: set[str] = set()
+        for z in self.zones:
+            if z.fixture not in names:
+                out.append(f"zone: unknown fixture '{z.fixture}'")
+            if z.fixture in zoned:
+                out.append(f"zone {z.fixture}: fixture has more than one zone")
+            zoned.add(z.fixture)
+            if not 0.0 <= z.gain <= 2.0:
+                out.append(f"zone {z.fixture}: gain must be between 0 and 2")
+            if len(z.rect) != 4:
+                out.append(f"zone {z.fixture}: rect needs 4 numbers [x0, y0, x1, y1]")
+                continue
+            x0, y0, x1, y1 = z.rect
+            if not all(0.0 <= v <= 1.0 for v in z.rect):
+                out.append(f"zone {z.fixture}: rect values must be between 0 and 1")
+            elif x1 <= x0 or y1 <= y0:
+                out.append(f"zone {z.fixture}: rect is empty (need x0 < x1 and y0 < y1)")
+        if not 0.5 <= self.screen.gamma <= 4.0:
+            out.append("screen: gamma must be between 0.5 and 4")
+        if not 0.0 <= self.screen.black_floor <= 0.5:
+            out.append("screen: black_floor must be between 0 and 0.5")
         return out
 
     def fixture(self, name: str) -> Fixture:
@@ -227,7 +298,8 @@ class Rig:
         for f in self.fixtures:
             state = states.get(f.name, {})
             for c in f.profile.channels:
-                frame[f.index(c)] = c.to_dmx(state.get(c.attr, 0.0))
+                lock = f.lock_value(c)
+                frame[f.index(c)] = lock if lock is not None else c.to_dmx(state.get(c.attr, 0.0))
         return frame
 
     def decode(self, frame: bytes) -> dict[str, State]:

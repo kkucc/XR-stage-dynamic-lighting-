@@ -1,4 +1,6 @@
-# Runtime: nothing on Python 3.11+ (standard library only).
+# Runtime: the standard library on Python 3.11+; `screen` mode also needs these two.
 tomli>=2.0; python_version < "3.11"
+numpy>=1.24
+mss>=9.0
 # Tests
 pytest>=7

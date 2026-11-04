@@ -22,9 +22,27 @@ master = 1.0                 # global brightness ceiling, 0..1
 input_timeout_s = 2.0        # proxy: no input for this long -> fade to the home look
 passthrough_unpatched = true # proxy: channels outside this patch are forwarded unchanged
 
+# Brightness curve for `xrlight screen`. Each zone's level is
+#   gain x zone gain x curve(L),  curve(L) = (max(0, L - black_floor) / (1 - black_floor)) ** gamma
+# where L is the sRGB-encoded luminance (0..1) of the zone's mean colour. Anything at or
+# below black_floor is fully off, so dark scenes stay dark; a higher gamma dims mid tones.
+# Both can be tuned live: edit the value, then restart `xrlight screen`.
+[screen]
+gamma = 2.0                  # 0.5..4; 1 = straight line
+black_floor = 0.08           # 0..0.5; luminance at or below this gives no light
+
 # Fixtures. `home` is the fallback look (values 0..1 per attribute): the stage's
 # normal look as seen live from QLC+ — warm white at full, dimmer ~60%.
 # Names in brackets are the QLC+ names.
+#
+# Fixtures are listed in physical order around the stage, right to left as seen
+# from the brain bar desk (so "Head left" / "Head right" are left/right from
+# there too). `identify` and the monitor follow this order; `check` prints the
+# patch sorted by address. Orbiter is last because it is not on the stage at the moment.
+#
+# The heads never move: pan and tilt are locked. `fixed` sets the DMX values (0..255)
+# those locked channels sit at for one fixture. To aim a head, find the position in
+# QLC+ Simple Desk, then copy the pan and tilt values here.
 
 [[fixture]]
 name = "Right back"            # [white right #1]
@@ -39,6 +57,13 @@ profile = "white_par_7ch"
 address = 8
 zone = "side_right"
 home = { white_2 = 1.0, dimmer = 0.6 }
+
+[[fixture]]
+name = "Head right"            # [7x10W Mini Moving Head]
+profile = "miniwash_710_9ch"
+address = 77
+zone = "effects"
+fixed = { pan = 168, tilt = 68 }  # aim found in QLC+ Simple Desk
 
 [[fixture]]
 name = "Front Right"           # [rgb front #1]
@@ -57,6 +82,13 @@ name = "Front Left"            # [rgb front #3]
 profile = "rgbw_par_8ch"
 address = 31
 zone = "front_left"
+
+[[fixture]]
+name = "Head left"             # [7x10W Mini Moving Head]
+profile = "moving_head_left_9ch"
+address = 66
+zone = "effects"
+fixed = { pan = 168, tilt = 68 }  # aim found in QLC+ Simple Desk
 
 [[fixture]]
 name = "Left front"            # [white left #1]
@@ -78,15 +110,56 @@ profile = "arri_orbiter_13ch"
 address = 53
 zone = "key"
 
-# Moving heads: left/right as seen from the brain bar desk.
-[[fixture]]
-name = "Head left"             # [7x10W Mini Moving Head]
-profile = "moving_head_left_9ch"
-address = 66
-zone = "effects"
+# Zones for `xrlight screen`: which part of the captured display (the picture sent
+# to the LED wall) each fixture follows. rect = [x0, y0, x1, y1] as fractions 0..1
+# of the display, y = 0 at the top. Left/right as seen from the brain bar desk,
+# which faces the wall, so the left of the picture is the left of the stage.
+# Fixtures without a zone keep their home look.
+# Optional `gain` (0..2, default 1) multiplies a zone's brightness, on top of --gain.
 
-[[fixture]]
-name = "Head right"            # [7x10W Mini Moving Head]
-profile = "miniwash_710_9ch"
-address = 77
-zone = "effects"
+[[zone]]
+fixture = "Front Right"
+rect = [0.667, 0.0, 1.0, 1.0]   # right third
+
+[[zone]]
+fixture = "Front Middle"
+rect = [0.333, 0.0, 0.667, 1.0] # middle third
+
+[[zone]]
+fixture = "Front Left"
+rect = [0.0, 0.0, 0.333, 1.0]   # left third
+
+# The four white side pars read too bright next to the front pars. gain = 0.5 is
+# the side-fill ratio; tune it live: edit the value, then restart `xrlight screen`.
+
+[[zone]]
+fixture = "Right back"
+rect = [0.5, 0.0, 1.0, 1.0]     # right half
+gain = 0.5                      # side-fill ratio
+
+[[zone]]
+fixture = "Right front"
+rect = [0.5, 0.0, 1.0, 1.0]
+gain = 0.5                      # side-fill ratio
+
+[[zone]]
+fixture = "Left front"
+rect = [0.0, 0.0, 0.5, 1.0]     # left half
+gain = 0.5                      # side-fill ratio
+
+[[zone]]
+fixture = "Left back"
+rect = [0.0, 0.0, 0.5, 1.0]
+gain = 0.5                      # side-fill ratio
+
+[[zone]]
+fixture = "Head left"
+rect = [0.0, 0.0, 0.5, 0.5]     # top-left quarter
+
+[[zone]]
+fixture = "Head right"
+rect = [0.5, 0.0, 1.0, 0.5]     # top-right quarter
+
+[[zone]]
+fixture = "Orbiter"
+rect = [0.33, 0.2, 0.67, 0.8]   # centre

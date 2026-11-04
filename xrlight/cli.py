@@ -1,4 +1,4 @@
-"""Command line: python -m xrlight {check,test,proxy,monitor} ..."""
+"""Command line: python -m xrlight {check,test,proxy,monitor,screen} ..."""
 from __future__ import annotations
 
 import argparse
@@ -19,14 +19,51 @@ def cmd_check(rig: Rig, args) -> None:
     n = rig.network
     print(f"target {n.target_ip}:{n.target_port}  universe {n.universe}  {n.fps:g} fps")
     print(f"proxy listens on {n.listen_ip}:{n.listen_port} for universe {n.input_universe}\n")
-    for f in rig.fixtures:
+    width = max(len(c.attr) for f in rig.fixtures for c in f.profile.channels)
+    for f in sorted(rig.fixtures, key=lambda f: f.address):   # patch in address order
         print(f"{f.address:3d}-{f.last_address:<3d} {f.name:13s} {f.profile.key}  ({f.zone})")
         for c in f.profile.channels:
-            status = f"LOCKED at {c.lock}" if c.locked else f"range {c.min}-{c.max}"
+            if not c.locked:
+                status = f"range {c.min}-{c.max}"
+            elif c.attr in f.fixed:
+                status = f"LOCKED at {f.lock_value(c)} (fixed in stage.toml; profile {c.lock})"
+            else:
+                status = f"LOCKED at {c.lock}"
             note = f"  — {c.note}" if c.note else ""
-            print(f"        ch{c.offset:<2d} (DMX {f.index(c) + 1:3d}) {c.attr:8s} {status}{note}")
+            print(f"        ch{c.offset:<2d} (DMX {f.index(c) + 1:3d}) {c.attr:{width}s} {status}{note}")
     used = sum(f.profile.footprint for f in rig.fixtures)
     print(f"\n{len(rig.fixtures)} fixtures, {used} of 512 channels, no overlaps")
+    if rig.zones:
+        print("\nscreen zones [x0, y0, x1, y1]:")
+        for z in rig.zones:
+            gain = f"  gain {z.gain:g}" if z.gain != 1.0 else ""
+            print(f"  {z.fixture:13s} [{', '.join(f'{v:.3g}' for v in z.rect)}]{gain}")
+        s = rig.screen
+        print(f"screen curve: gamma {s.gamma:g}, black_floor {s.black_floor:g}")
+
+
+def cmd_screen(rig: Rig, args, target: tuple[str, int]) -> int:
+    try:
+        from . import screen     # needs numpy and mss; only loaded for this command
+    except ImportError as exc:
+        print(f"screen mode needs numpy and mss ({exc}): pip install -r requirements.txt",
+              file=sys.stderr)
+        return 1
+    try:
+        displays = screen.monitors()
+    except screen.CaptureError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    if args.list_monitors:
+        for i, m in enumerate(displays):
+            label = "  (all displays combined)" if i == 0 else ""
+            print(f"{i}: {m['width']}x{m['height']} at ({m['left']}, {m['top']}){label}")
+        return 0
+    if not 0 <= args.monitor < len(displays):
+        print(f"no display {args.monitor}; see xrlight screen --list-monitors", file=sys.stderr)
+        return 2
+    return screen.run_screen(rig, target, args.monitor, args.fps, args.gain, args.delay_ms,
+                             args.seconds)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -55,9 +92,28 @@ def main(argv: list[str] | None = None) -> int:
     p_mon.add_argument("--universe", type=int, help="default: universe from config")
     p_mon.add_argument("--seconds", type=float)
 
+    p_scr = sub.add_parser("screen", help="lights follow the picture on a display (LED wall)")
+    p_scr.add_argument("--list-monitors", action="store_true",
+                       help="print the displays that can be captured and exit")
+    p_scr.add_argument("--monitor", type=int, default=1, help="display to capture (default 1)")
+    p_scr.add_argument("--target", help="IP[:PORT], default from config")
+    p_scr.add_argument("--fps", type=float, default=30.0,
+                       help="capture rate (default 30); output stays at the config fps")
+    p_scr.add_argument("--gain", type=float, default=1.0, help="brightness gain 0..2 (default 1)")
+    p_scr.add_argument("--delay-ms", type=float, default=0.0,
+                       help="delay the lights to line up with the wall (default 0)")
+    p_scr.add_argument("--seconds", type=float, help="stop after N seconds")
+
     args = parser.parse_args(argv)
     if getattr(args, "level", None) is not None and not 0.0 <= args.level <= 1.0:
         parser.error("--level must be between 0 and 1")
+    if args.command == "screen":
+        if not 0.0 <= args.gain <= 2.0:
+            parser.error("--gain must be between 0 and 2")
+        if args.fps <= 0:
+            parser.error("--fps must be above 0")
+        if args.delay_ms < 0:
+            parser.error("--delay-ms cannot be negative")
     try:
         rig = Rig.load(args.config)
     except (OSError, ValueError, KeyError) as exc:
@@ -82,6 +138,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "monitor":
             run_monitor(rig, ("0.0.0.0", args.port), args.universe or n.universe,
                         seconds=args.seconds)
+        elif args.command == "screen":
+            target = parse_target(args.target) if args.target else default_target
+            return cmd_screen(rig, args, target)
     except PortBusyError as exc:
         print(exc, file=sys.stderr)
         return 1

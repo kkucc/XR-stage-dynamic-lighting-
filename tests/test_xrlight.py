@@ -99,7 +99,7 @@ def test_right_head_cannot_move_or_strobe(rig):
     states["Head right"].update(dimmer=1.0, red=1.0, pan=1.0, tilt=1.0, speed=1.0, reset=1.0)
     frame = rig.render(states)
     i = rig.fixture("Head right").address - 1
-    assert frame[i] == 0 and frame[i + 1] == 0          # pan, tilt locked
+    assert frame[i] == 168 and frame[i + 1] == 68       # pan, tilt locked at the fixed aim
     assert frame[i + 2] == 134                           # full dimmer stays below strobe range
     assert frame[i + 7] == 0 and frame[i + 8] == 0      # speed, reset locked
 
@@ -109,7 +109,7 @@ def test_left_head_layout(rig):
     states = rig.zero_states()
     states["Head left"].update(pan=1.0, tilt=1.0, unknown=1.0, macro=1.0, shutter=0.0)
     frame = rig.render(states)
-    assert frame[65] == 0 and frame[66] == 0             # DMX 66/67 pan, tilt locked
+    assert frame[65] == 168 and frame[66] == 68          # DMX 66/67 pan, tilt locked at the aim
     assert frame[71] == 0                                # DMX 72 macro always 0
     assert frame[72] == 18                               # DMX 73 shutter: steady, never strobe
     assert rig.render(rig.zero_states())[71:73] == bytes([0, 18])
@@ -140,7 +140,42 @@ def test_locked_channels_ignore_input(rig):
     for f in rig.fixtures:
         for c in f.profile.channels:
             if c.locked:
-                assert frame[f.index(c)] == c.lock
+                assert frame[f.index(c)] == f.lock_value(c)
+
+
+def test_fixed_head_position_is_rendered(rig):
+    assert rig.fixture("Head left").fixed == {"pan": 168, "tilt": 68}   # aim from QLC+
+    head = rig.fixture("Head right")
+    head.fixed = {"pan": 120, "tilt": 80}
+    states = rig.zero_states()
+    states["Head right"].update(pan=1.0, tilt=0.0, dimmer=1.0)       # input still ignored
+    frame = rig.render(states)
+    i = head.address - 1
+    assert frame[i] == 120 and frame[i + 1] == 80
+    assert frame[i + 7] == 0 and frame[i + 8] == 0                   # speed, reset untouched
+    assert frame[rig.fixture("Head left").address - 1] == 168         # other head unchanged
+    assert "pan" not in head.profile.by_attr                         # still locked, not free
+    assert rig.problems() == []
+
+
+def test_fixed_only_for_locked_channels(rig):
+    rig.fixture("Head right").fixed = {"dimmer": 10, "zoom": 5, "pan": 300}
+    rig.fixture("Head left").fixed = {"tilt": 1.5}
+    problems = "\n".join(rig.problems())
+    assert "Head right: fixed 'dimmer' is not a locked channel" in problems
+    assert "Head right: fixed 'zoom' is not a locked channel" in problems
+    assert "Head right: fixed pan = 300 must be a whole number 0..255" in problems
+    assert "Head left: fixed tilt = 1.5 must be a whole number 0..255" in problems
+
+
+def test_check_shows_fixed_values(rig, capsys):
+    from xrlight.cli import cmd_check
+    rig.fixture("Head left").fixed = {"pan": 120, "tilt": 80}
+    cmd_check(rig, None)
+    out = capsys.readouterr().out
+    assert "LOCKED at 120 (fixed in stage.toml; profile 0)" in out
+    assert "LOCKED at 80 (fixed in stage.toml; profile 0)" in out
+    assert "screen curve: gamma 2, black_floor 0.08" in out
 
 
 def test_render_decode_roundtrip(rig):
@@ -198,6 +233,14 @@ def test_colour_to_state_white_par_follows_cct(rig):
     assert daylight["white_1"] > daylight["white_2"]     # cool dominates
     assert sunset["white_2"] > sunset["white_1"]         # warm dominates
     assert sunset["amber"] > 0
+
+
+def test_identify_follows_file_order(rig):
+    from xrlight.patterns import identify
+    assert [f.name for f in rig.fixtures][:3] == ["Right back", "Right front", "Head right"]
+    targets, label = identify(rig, 4.5)                  # default 2 s step -> third fixture
+    lit = [name for name, s in targets.items() if any(s.values())]
+    assert lit == ["Head right"] and label.startswith("Head right")
 
 
 def test_level_option(rig):
