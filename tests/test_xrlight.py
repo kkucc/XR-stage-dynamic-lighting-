@@ -90,8 +90,36 @@ def test_patch_matches_qlc_project(rig):
     assert spans == {"Right back": (1, 7), "Right front": (8, 14), "Front Right": (15, 22),
                      "Front Middle": (23, 30), "Front Left": (31, 38), "Left front": (39, 45),
                      "Left back": (46, 52), "Orbiter": (53, 65), "Head left": (66, 74),
-                     "Head right": (77, 85)}
+                     "Head right": (77, 85),
+                     **{f"Tube A {n}": (112 + 3 * (n - 1), 114 + 3 * (n - 1))
+                        for n in range(1, 9)},
+                     **{f"Tube B {n}": (136 + 3 * (n - 1), 138 + 3 * (n - 1))
+                        for n in range(1, 9)}}
     assert rig.problems() == []
+
+
+def test_astera_tube_pixels(rig):
+    tubes = [f for f in rig.fixtures if f.name.startswith("Tube ")]
+    assert [f.name for f in tubes] == [f"Tube {t} {n}" for t in "AB" for n in range(1, 9)]
+    assert all(f.profile.key == "astera_helios_rgb_pixel" and f.zone == "tubes" for f in tubes)
+    taken = {}                                          # DMX address -> fixture
+    for f in rig.fixtures:
+        for a in range(f.address, f.last_address + 1):
+            assert a not in taken, f"{f.name} overlaps {taken[a]} at {a}"
+            taken[a] = f.name
+    tube_addrs = sorted(a for a, name in taken.items() if name.startswith("Tube "))
+    assert tube_addrs == list(range(112, 160))
+
+    states = rig.zero_states()
+    states["Tube A 2"].update(red=1.0, green=0.5, blue=0.0)
+    states["Tube A 8"].update(green=1.0)
+    states["Tube B 8"].update(red=0.0, green=0.0, blue=1.0)
+    frame = rig.render(states)
+    assert frame[114:117] == bytes([255, 128, 0])       # DMX 115-117 = Tube A pixel 2
+    assert frame[132:135] == bytes([0, 255, 0])         # DMX 133-135 = Tube A pixel 8
+    assert frame[156:159] == bytes([0, 0, 255])         # DMX 157-159 = Tube B pixel 8
+    assert frame[111:114] == bytes(3)                   # Tube A pixel 1 stays dark
+    assert rig.decode(frame)["Tube B 8"] == {"red": 0.0, "green": 0.0, "blue": 1.0}
 
 
 def test_right_head_cannot_move_or_strobe(rig):

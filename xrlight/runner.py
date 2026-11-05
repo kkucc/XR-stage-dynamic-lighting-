@@ -179,12 +179,12 @@ def _draw(rig: Rig, frame: bytes, universe: int, source: str, rate: int, port: i
         for c in f.profile.channels:
             i = f.index(c)
             patched.add(i)
-            mark = "!" if c.locked and frame[i] != c.lock else " "
+            mark = "!" if c.locked and frame[i] != f.lock_value(c) else " "
             values.append(f"{SHORT.get(c.attr, c.attr[:4])}:{frame[i]:3d}{mark}")
         lines.append(f"{f.name:13.13s} \x1b[48;2;{r};{g};{b}m        \x1b[0m "
                      f"{level * 100:4.0f}%  " + " ".join(values) + "\x1b[K")
     stray = [f"{i + 1}={v}" for i, v in enumerate(frame) if v and i not in patched]
     lines += ["\x1b[K", "unpatched non-zero: " + (", ".join(stray[:16]) or "none")
               + (" …" if len(stray) > 16 else "") + "\x1b[K",
-              "'!' = a locked channel received a non-zero value\x1b[K", "\x1b[J"]
+              "'!' = a locked channel is not at its locked value\x1b[K", "\x1b[J"]
     return "\n".join(lines)

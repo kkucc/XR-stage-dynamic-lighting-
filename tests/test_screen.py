@@ -142,6 +142,9 @@ def test_default_zones(rig):
     assert rects["Front Left"][0] == 0.0 and rects["Front Right"][2] == 1.0
     assert rects["Right back"] == rects["Right front"] == (0.5, 0.0, 1.0, 1.0)
     assert rects["Orbiter"] == (0.33, 0.2, 0.67, 0.8)
+    for n in range(1, 9):                                 # top slice = pixel 1
+        assert rects[f"Tube A {n}"] == pytest.approx((0.0, (n - 1) / 8, 0.15, n / 8))
+        assert rects[f"Tube B {n}"] == pytest.approx((0.85, (n - 1) / 8, 1.0, n / 8))
 
 
 def test_zone_validation(rig):

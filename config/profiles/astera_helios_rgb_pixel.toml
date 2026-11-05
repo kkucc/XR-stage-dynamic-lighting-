@@ -1,0 +1,15 @@
+# Astera Helios tube, one pixel of the "RGB RGB" profiles (strobe off).
+#
+# Both tubes run profile 42 = 8 pixels (24 ch); profile 18 is the 2-pixel version.
+# Each pixel is three channels R, G, B, so every pixel is its own 3-channel fixture.
+# No dimmer and no strobe channel: brightness comes from R, G and B alone.
+
+name = "Astera Helios RGB pixel (3ch)"
+source = "Astera DMX profiles V2, profiles 18/42 (RGB, strobe off)"
+footprint = 3
+
+channels = [
+  { offset = 1, attr = "red",   display = [1.0, 0.0, 0.0] },
+  { offset = 2, attr = "green", display = [0.0, 1.0, 0.0] },
+  { offset = 3, attr = "blue",  display = [0.0, 0.0, 1.0] },
+]

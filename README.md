@@ -22,15 +22,6 @@ python -m xrlight check      # prints the patch, locked channels and notes
 I am connection so far via Ethernet cable, trying to think how to make with out it.
 
 ## Commands
-
-| Command | What it does |
-|---|---|
-| `check` | validate the config and print the patch and screen zones |
-| `test --pattern P` | send a test pattern (`identify`, `palette`, `home`, `flash-test`) |
-| `proxy` | receive Art-Net (Unreal/QLC+), make it safe, forward it to the ODE |
-| `monitor` | show incoming Art-Net as fixtures in the terminal |
-| `screen` | lights follow the picture on one of the Mac's displays (the LED wall feed) |
-
 To test connection 
 ```bash
 python -m xrlight monitor --port 6454  
@@ -39,7 +30,10 @@ First test command thats ignight all lisght in order in loop
 ```bash
 python -m xrlight test --pattern identify --level 0.8
 ```
-
+```bash
+.venv/bin/python -m xrlight screen --list-monitors
+.venv/bin/python -m xrlight screen --monitor 2
+```
 
 ## Testing at home
 
@@ -101,19 +95,6 @@ their home look.
    Options: `--gain` (0..2), `--fps` (capture rate, default 30; DMX output stays at the
    config fps), `--target`, `--seconds`. Every second it prints the capture fps, output
    fps and how many frames the flash guard held back. Ctrl+C fades to the home look.
-   A `[[zone]]` can also have `gain = 0.5` (0..2, default 1): it scales that zone's
-   brightness on top of `--gain`. The white side pars use 0.5 as the side-fill ratio;
-   edit the value and restart `xrlight screen` to tune it.
-   The `[screen]` section sets the brightness curve: each zone's level is
-   `gain × zone gain × curve(L)`, with L the luminance of the zone's mean colour and
-   `curve(L) = (max(0, L − black_floor) / (1 − black_floor)) ** gamma`. Anything darker
-   than `black_floor` (default 0.08, range 0..0.5) is off, and a higher `gamma` (default
-   2.0, range 0.5..4) dims mid tones, so dark scenes stay dark. Tune live the same way:
-   edit, restart `screen`.
-   The moving heads do not move (pan and tilt are locked). To aim one, find the position
-   in QLC+ Simple Desk and copy the values into its `[[fixture]]` as
-   `fixed = { pan = 120, tilt = 80 }` (DMX 0..255; only locked channels can be fixed).
-   `xrlight check` shows the values in use.
 4. The wall shows the picture later than the Mac does (capture card, OBS, processor).
    Raise `--delay-ms` until the lights and the wall change together.
 5. macOS asks for **Screen Recording** permission (System Settings → Privacy & Security →
@@ -124,19 +105,6 @@ Known limitation: in reality the front lights would carry what is *behind* the c
 which the wall does not show. Mapping wall zones straight onto the fixtures is a first
 approximation; an Unreal SceneCapture of the virtual surroundings is the better source later.
 
-## Verified vs assumed
-
-| Item | Status | Source |
-|---|---|---|
-| ODE Mk2 at 10.55.4.7, Art-Net unicast, 44 fps max | wiki | DMX / Unreal DMX Setup pages |
-| Patch: 7 fixed pars on 1–52 | wiki + library | DMX page, Stage_DMX_Library |
-| Orbiter on 200–209 | library only | Stage_DMX_Library — **verify** |
-| Art-Net universe 1 | template config | `ExternUniverseStart=1` in VP-Template — **verify** |
-| White par ch1/ch2 = cool/warm white, CCT 6000/3000 K | guess | **measure** |
-| RGBW par ch6 "Burst" = strobe (locked) | guess | **verify** |
-| Front Right has Mode/Dimmer swapped | library | **verify** (`rgbw_par_8ch_alt`) |
-| Orbiter channel meaning | library | compare with the fixture's DMX mode |
-| Home look | placeholder | ask the stage team |
 
 ## Safety model
 
