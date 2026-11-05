@@ -1,7 +1,7 @@
 # Architecture
 
 xrlight is a single Python package. On Python 3.11+ it only needs the standard library,
-except `screen` mode, which needs numpy and mss. It sends Art-Net (ArtDmx,
+except `screen` (numpy, mss) and `calibrate`/`follow` (numpy, scipy). It sends Art-Net (ArtDmx,
 one universe) to the ENTTEC ODE Mk2 at 10.55.4.7.
 
 ## Modules
@@ -14,6 +14,8 @@ one universe) to the ENTTEC ODE Mk2 at 10.55.4.7.
 | `patterns.py` | Test patterns (`identify`, `palette`, `home`, `flash-test`) as functions of time |
 | `runner.py` | The loops for `test`, `proxy` and `monitor`, plus the fade home on exit |
 | `screen.py` | Display capture thread, zone averaging, brightness curve, delay buffer, the `screen` loop |
+| `osc.py` | Minimal OSC parsing and sending; the helmet receiver; `helmet` and `fake-helmet` |
+| `head.py` | Head calibration files, interpolation, rate-limited pan/tilt, the `calibrate` and `follow` loops |
 | `artnet.py` | Building and parsing ArtDmx packets, one UDP socket |
 | `cli.py` | Argument parsing and `check` |
 
@@ -41,7 +43,9 @@ source            ->  targets      ->  Pipeline.step  ->  Rig.render  ->  ArtDmx
    states with `colour_to_state`.
 2. `Pipeline.step` limits and smooths them (see [safety.md](safety.md)).
 3. `Rig.render` writes each channel: locked channels get their locked value no matter
-   what the state says; free channels map 0..1 onto the channel's `min..max`.
+   what the state says; free channels map 0..1 onto the channel's `min..max`. In
+   `follow` and `calibrate` only, a `moves` argument replaces the locked value of pan
+   and tilt (and nothing else) for that frame.
 4. The frame goes out as one ArtDmx packet with an incrementing sequence number.
 
 The loop timing uses `perf_counter` with a fixed tick, and resyncs instead of
@@ -69,6 +73,13 @@ The thread keeps only the latest result `(sequence, capture time, zone colours)`
 a lock. The main loop takes new results, pushes them into the delay buffer with their
 capture time, and reads the value from `--delay-ms` ago. Details in
 [screen-mode.md](screen-mode.md).
+
+## Head follow
+
+`follow` is a fourth source next to patterns, proxy and screen. The OSC socket is
+polled in the main loop (no thread: a helmet message is a few bytes and the loop runs
+at 44 fps anyway). Each frame the controller produces light targets for the pipeline
+and pan/tilt moves for `render`. See [head-follow.md](head-follow.md).
 
 ## Tests
 

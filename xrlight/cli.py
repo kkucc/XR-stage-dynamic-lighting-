@@ -1,4 +1,4 @@
-"""Command line: python -m xrlight {check,test,proxy,monitor,screen} ..."""
+"""Command line: python -m xrlight {check,test,proxy,monitor,screen,helmet,calibrate,follow,fake-helmet} ..."""
 from __future__ import annotations
 
 import argparse
@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 
 from .artnet import PortBusyError, parse_target
+from .osc import run_fake_helmet, run_helmet
 from .patterns import PATTERNS
 from .rig import Rig
 from .runner import run_monitor, run_pattern, run_proxy
@@ -40,6 +41,13 @@ def cmd_check(rig: Rig, args) -> None:
             print(f"  {z.fixture:13s} [{', '.join(f'{v:.3g}' for v in z.rect)}]{gain}")
         s = rig.screen
         print(f"screen curve: gamma {s.gamma:g}, black_floor {s.black_floor:g}")
+    fo = rig.follow
+    print(f"\nfollow: OSC port {fo.osc_port}, light {fo.follow_level:g}, "
+          f"max {fo.max_steps_per_second:g} steps/s, hold {fo.hold_s:g} s")
+    for f in rig.heads():
+        path = rig.config_dir / "calibration" / f"{f.name}.toml" if rig.config_dir else None
+        found = "calibrated" if path is not None and path.exists() else "not calibrated"
+        print(f"  {f.name:13s} {found}")
 
 
 def cmd_screen(rig: Rig, args, target: tuple[str, int]) -> int:
@@ -64,6 +72,23 @@ def cmd_screen(rig: Rig, args, target: tuple[str, int]) -> int:
         return 2
     return screen.run_screen(rig, target, args.monitor, args.fps, args.gain, args.delay_ms,
                              args.seconds)
+
+
+def cmd_head(rig: Rig, args, target: tuple[str, int]) -> int:
+    try:
+        from . import head       # needs numpy and scipy; only loaded for these commands
+    except ImportError as exc:
+        print(f"{args.command} needs numpy and scipy ({exc}): pip install -r requirements.txt",
+              file=sys.stderr)
+        return 1
+    if args.command == "calibrate":
+        return head.run_calibrate(rig, args.head, target)
+    try:
+        colour = head.parse_colour(args.colour)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    return head.run_follow(rig, target, args.seconds, args.others_off, args.head, colour)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -104,6 +129,31 @@ def main(argv: list[str] | None = None) -> int:
                        help="delay the lights to line up with the wall (default 0)")
     p_scr.add_argument("--seconds", type=float, help="stop after N seconds")
 
+    p_hel = sub.add_parser("helmet", help="print the helmet position received over OSC (no DMX)")
+    p_hel.add_argument("--port", type=int, help="OSC port, default from config")
+    p_hel.add_argument("--seconds", type=float)
+
+    p_cal = sub.add_parser("calibrate", help="teach a moving head where the helmet is (interactive)")
+    p_cal.add_argument("--head", required=True, help='fixture name, e.g. "Head left"')
+    p_cal.add_argument("--target", help="IP[:PORT], default from config")
+
+    p_fol = sub.add_parser("follow", help="calibrated moving heads follow the helmet")
+    p_fol.add_argument("--target", help="IP[:PORT], default from config")
+    p_fol.add_argument("--seconds", type=float)
+    p_fol.add_argument("--others-off", action="store_true",
+                       help="keep every fixture except the followed heads dark (exit still fades home)")
+    p_fol.add_argument("--head", action="append", metavar="NAME",
+                       help='only this head follows (repeat for more; default: every calibrated head)')
+    p_fol.add_argument("--colour", default="ffffff",
+                       help="light colour of the following heads, sRGB hex (default ffffff)")
+
+    p_fake = sub.add_parser("fake-helmet", help="send a helmet walking a circle over OSC")
+    p_fake.add_argument("--target", default="127.0.0.1:9000", help="IP[:PORT] (default 127.0.0.1:9000)")
+    p_fake.add_argument("--radius", type=float, default=150.0, help="cm (default 150)")
+    p_fake.add_argument("--period", type=float, default=30.0, help="seconds per lap (default 30)")
+    p_fake.add_argument("--rate", type=float, default=50.0, help="messages per second (default 50)")
+    p_fake.add_argument("--seconds", type=float)
+
     args = parser.parse_args(argv)
     if getattr(args, "level", None) is not None and not 0.0 <= args.level <= 1.0:
         parser.error("--level must be between 0 and 1")
@@ -141,7 +191,15 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "screen":
             target = parse_target(args.target) if args.target else default_target
             return cmd_screen(rig, args, target)
-    except PortBusyError as exc:
+        elif args.command == "helmet":
+            run_helmet(args.port or rig.follow.osc_port, seconds=args.seconds)
+        elif args.command in ("calibrate", "follow"):
+            target = parse_target(args.target) if args.target else default_target
+            return cmd_head(rig, args, target)
+        elif args.command == "fake-helmet":
+            run_fake_helmet(parse_target(args.target, 9000), args.radius, args.period,
+                            args.rate, seconds=args.seconds)
+    except (PortBusyError, OSError) as exc:
         print(exc, file=sys.stderr)
         return 1
     return 0

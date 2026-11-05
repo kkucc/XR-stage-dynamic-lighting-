@@ -18,6 +18,12 @@ A fixture can override the value of its own locked channels with `fixed` in
 `stage.toml`. This is how the heads are aimed (pan 168, tilt 68). The channel stays
 locked: the value is still constant and nothing upstream can change it.
 
+The one exception is head follow. `follow` and `calibrate` pass a per-frame `moves`
+override to `Rig.render`, and render applies it only to channels named in `MOVE_ATTRS`
+(`pan`, `tilt`). Anything else in the override is ignored, so shutter, strobe, reset,
+macro and speed stay locked even in that mode. Movement is rate-limited and clamped to
+the hand-taught range; see [head-follow.md](head-follow.md).
+
 ## 2. Range limits
 
 A free channel maps 0..1 onto its own `min..max`. This matters for Head right, whose
@@ -86,5 +92,8 @@ These are not handled, and are worth knowing before running anything new on the 
 - **`fixed` accepts any locked channel.** It is meant for pan and tilt, but
   `fixed = { shutter = 200 }` on Head left would pass validation and strobe the head.
   `check` shows every fixed value next to the profile's lock, so look at it after editing.
+- **Head follow trusts the calibration.** The heads can point anywhere within the
+  taught pan/tilt range. A point aimed at someone's face makes the area around it aim at
+  faces too. Nothing checks where the beam lands.
 - **`test --raw` has no safety layer at all.** It exists to fake an unsafe source for
   testing the proxy on localhost. Nothing stops it from being sent to the stage's IP.

@@ -1,6 +1,8 @@
-# Runtime: the standard library on Python 3.11+; `screen` mode also needs these two.
+# Runtime: the standard library on Python 3.11+; `screen` needs numpy and mss,
+# `calibrate` and `follow` need numpy and scipy.
 tomli>=2.0; python_version < "3.11"
 numpy>=1.24
 mss>=9.0
+scipy>=1.11
 # Tests
 pytest>=7

@@ -31,6 +31,17 @@ passthrough_unpatched = true # proxy: channels outside this patch are forwarded 
 gamma = 2.0                  # 0.5..4; 1 = straight line
 black_floor = 0.08           # 0..0.5; luminance at or below this gives no light
 
+# `xrlight follow`: the moving heads aim at the tracked helmet. Unreal sends
+# /xr/helmet x y z (cm, stage-local) over OSC. Each head needs a calibration file,
+# made with `xrlight calibrate --head "Head left"` (saved in config/calibration/).
+# pan/tilt only move in `follow` and `calibrate`; everywhere else they stay at `fixed`.
+[follow]
+osc_port = 9000              # UDP port for OSC from Unreal
+follow_level = 0.5           # head brightness while following, 0..1
+max_steps_per_second = 30    # pan/tilt speed limit in DMX steps per second
+hold_s = 0.5                 # no helmet data for this long: hold position;
+                             # after safety.input_timeout_s: back home, home look
+
 # Fixtures. `home` is the fallback look (values 0..1 per attribute): the stage's
 # normal look as seen live from QLC+ — warm white at full, dimmer ~60%.
 # Names in brackets are the QLC+ names.

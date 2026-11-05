@@ -1,0 +1,12 @@
+# Calibration for Head right: helmet floor position (cm, stage-local) -> pan/tilt (DMX).
+# Written by `xrlight calibrate --head "Head right"`, 2026-11-05 15:49.
+# Height (z) is not used.
+
+head = "Head right"
+points = [
+  { x = 304.8, y = 373.1, pan = 168, tilt = 68 },
+  { x = -48.5, y = 180.8, pan = 131, tilt = 155 },
+  { x = 233.0, y = -207.0, pan = 116, tilt = 204 },
+  { x = 233.0, y = -207.0, pan = 136, tilt = 204 },
+  { x = 233.0, y = -207.0, pan = 153, tilt = 204 },
+]

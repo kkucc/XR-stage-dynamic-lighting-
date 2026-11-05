@@ -37,6 +37,18 @@ problem it finds, and prints the result.
 
 See [screen-mode.md](screen-mode.md) for the formula and example values.
 
+### `[follow]`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `osc_port` | 9000 | UDP port for `/xr/helmet` from Unreal |
+| `follow_level` | 0.5 | head brightness while following, 0..1 |
+| `max_steps_per_second` | 30 | pan/tilt speed limit in DMX steps per second, at most 255 |
+| `hold_s` | 0.5 | no helmet data for this long: hold position; must be below `safety.input_timeout_s` |
+
+After `safety.input_timeout_s` without data the heads go back to their `fixed`
+position and home look. See [head-follow.md](head-follow.md).
+
 ### `[[fixture]]`
 
 | Key | Required | Meaning |
@@ -65,6 +77,21 @@ whole numbers 0–255.
 
 A fixture has at most one zone. Fixtures without a zone show their home look in screen
 mode. Rects may overlap (the side pars share a half each).
+
+## Calibration files
+
+`config/calibration/<head name>.toml`, written by `xrlight calibrate`. One point per
+taught spot: helmet floor position in cm and the DMX pan/tilt aimed there.
+
+```toml
+head = "Head left"
+points = [
+  { x = -180.0, y = 95.5, pan = 151, tilt = 72 },
+]
+```
+
+`follow` uses a head only if its file has at least 3 points that are not on one line.
+`check` lists each head as calibrated or not.
 
 ## Profiles
 

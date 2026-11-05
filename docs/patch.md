@@ -84,4 +84,5 @@ left pole under Head left, Tube B at the right pole under Head right.
 | Head pan/tilt aim 168/68 | set on stage | QLC+ Simple Desk |
 | Tube profiles and addresses | config | Astera DMX profiles V2 |
 | Tube orientation and position | verified live | `identify`, Nov 2026 |
+| Helmet OSC: `/xr/helmet` x y z (cm, stage-local) on UDP 9000, ~50 msg/s | verified live | Unreal → Mac, Nov 2026 |
 | Home look (warm white, dimmer 60%) | approximation | QLC+ live look |

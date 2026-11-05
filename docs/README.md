@@ -7,6 +7,7 @@ the way it is.
 - [architecture.md](architecture.md) — modules, and what happens to one frame
 - [patch.md](patch.md) — every fixture on the stage, its channels, and how sure we are
 - [screen-mode.md](screen-mode.md) — from captured pixels to fixture colour and level
+- [head-follow.md](head-follow.md) — moving heads following a tracked helmet: OSC, calibration, follow
 - [safety.md](safety.md) — locked channels, smoothing, the flash guard, and known gaps
 - [config.md](config.md) — reference for `stage.toml` and the profile files
 

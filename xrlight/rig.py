@@ -5,6 +5,8 @@ values between 0 and 1, for example {"red": 1.0, "dimmer": 0.5}. The rig turns
 states into a 512-byte DMX frame (render) and a received frame back into states
 (decode). Locked channels are always rendered with their fixed value: the
 profile's `lock`, or the fixture's `fixed` value for that attribute if it has one.
+Only `follow` and `calibrate` may move a head, by passing `moves` to render(); that
+override is limited to the locked pan and tilt channels (MOVE_ATTRS).
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ except ModuleNotFoundError:  # Python < 3.11
     import tomli as tomllib
 
 DIMMER = "dimmer"
+MOVE_ATTRS = ("pan", "tilt")   # the only locked channels a runtime move may override
 UNIVERSE_SIZE = 512
 
 State = dict[str, float]
@@ -137,6 +140,15 @@ class Screen:
 
 
 @dataclass
+class Follow:
+    """`xrlight follow`: the moving heads aim at a tracked helmet (OSC from Unreal)."""
+    osc_port: int = 9000
+    follow_level: float = 0.5          # head brightness while following, 0..1
+    max_steps_per_second: float = 30.0  # pan/tilt speed limit, DMX steps per second
+    hold_s: float = 0.5                 # no helmet data for this long -> hold position
+
+
+@dataclass
 class Network:
     target_ip: str = "10.55.4.7"
     target_port: int = 6454
@@ -195,12 +207,15 @@ def _validate_profile(p: Profile) -> None:
 
 class Rig:
     def __init__(self, network: Network, safety: Safety, fixtures: list[Fixture],
-                 zones: list[Zone] | None = None, screen: Screen | None = None):
+                 zones: list[Zone] | None = None, screen: Screen | None = None,
+                 follow: Follow | None = None, config_dir: Path | None = None):
         self.network = network
         self.safety = safety
         self.fixtures = fixtures
         self.zones = zones or []
         self.screen = screen or Screen()
+        self.follow = follow or Follow()
+        self.config_dir = config_dir         # folder of stage.toml (calibration lives next to it)
 
     @classmethod
     def load(cls, path: str | Path) -> "Rig":
@@ -222,7 +237,8 @@ class Rig:
                  for raw in data.get("zone", [])]
         screen = {k: float(v) for k, v in data.get("screen", {}).items()}
         rig = cls(Network(**data.get("network", {})), Safety(**data.get("safety", {})),
-                  fixtures, zones, Screen(**screen))
+                  fixtures, zones, Screen(**screen), Follow(**data.get("follow", {})),
+                  path.parent)
         errors = rig.problems()
         if errors:
             raise ValueError("stage config problems:\n  " + "\n  ".join(errors))
@@ -273,6 +289,15 @@ class Rig:
             out.append("screen: gamma must be between 0.5 and 4")
         if not 0.0 <= self.screen.black_floor <= 0.5:
             out.append("screen: black_floor must be between 0 and 0.5")
+        fo = self.follow
+        if not 1 <= fo.osc_port <= 65535:
+            out.append("follow: osc_port must be 1..65535")
+        if not 0.0 <= fo.follow_level <= 1.0:
+            out.append("follow: follow_level must be between 0 and 1")
+        if not 0.0 < fo.max_steps_per_second <= 255.0:
+            out.append("follow: max_steps_per_second must be above 0 and at most 255")
+        if not 0.0 <= fo.hold_s < self.safety.input_timeout_s:
+            out.append("follow: hold_s must be at least 0 and below safety.input_timeout_s")
         return out
 
     def fixture(self, name: str) -> Fixture:
@@ -280,6 +305,12 @@ class Rig:
             if f.name == name:
                 return f
         raise KeyError(name)
+
+    def heads(self) -> list[Fixture]:
+        """Fixtures whose profile has locked pan and tilt channels."""
+        return [f for f in self.fixtures
+                if all(any(c.locked and c.attr == a for c in f.profile.channels)
+                       for a in MOVE_ATTRS)]
 
     def zero_states(self) -> dict[str, State]:
         return {f.name: f.profile.zero_state() for f in self.fixtures}
@@ -290,15 +321,24 @@ class Rig:
             states[f.name].update(f.home)
         return states
 
-    def render(self, states: dict[str, State], base: bytes | None = None) -> bytearray:
-        """Build a DMX frame. Channels outside the patch keep their value from `base`."""
+    def render(self, states: dict[str, State], base: bytes | None = None,
+               moves: dict[str, dict[str, float]] | None = None) -> bytearray:
+        """Build a DMX frame. Channels outside the patch keep their value from `base`.
+
+        `moves` ({fixture: {"pan": dmx, "tilt": dmx}}) replaces the locked value of pan
+        and tilt for this frame only. Any other attribute in it is ignored.
+        """
         frame = bytearray(UNIVERSE_SIZE)
         if base is not None:
             frame[:min(len(base), UNIVERSE_SIZE)] = base[:UNIVERSE_SIZE]
+        moves = moves or {}
         for f in self.fixtures:
             state = states.get(f.name, {})
+            move = moves.get(f.name, {})
             for c in f.profile.channels:
                 lock = f.lock_value(c)
+                if lock is not None and c.attr in MOVE_ATTRS and c.attr in move:
+                    lock = min(255, max(0, int(round(move[c.attr]))))
                 frame[f.index(c)] = lock if lock is not None else c.to_dmx(state.get(c.attr, 0.0))
         return frame
 
