@@ -1,4 +1,4 @@
-"""The three ways to run: send a pattern, proxy Unreal, or monitor Art-Net."""
+"""pattern, proxy and monitor"""
 from __future__ import annotations
 
 import sys
@@ -15,20 +15,20 @@ Log = Callable[[str], None]
 
 
 def _ticks(fps: float):
-    """Yield (now, next_tick) at a steady frame rate without drifting."""
+    """steady frame rate"""
     period = 1.0 / fps
     next_tick = time.perf_counter()
     while True:
         now = time.perf_counter()
         yield now, next_tick
         next_tick += period
-        if next_tick < now - period:          # fell behind (sleep, debugger): resync
+        if next_tick < now - period:          # too far behind, catch up
             next_tick = now + period
 
 
 def fade_home(rig: Rig, sock: ArtNetSocket, target: tuple[str, int], pipeline: Pipeline,
               seconds: float = 1.5, base: bytes | None = None) -> None:
-    """Fail-safe: ease the rig back to its home look before stopping."""
+    """fade back to home look before closing"""
     end = time.perf_counter() + seconds
     for now, next_tick in _ticks(rig.network.fps):
         if now >= end:
@@ -40,7 +40,7 @@ def fade_home(rig: Rig, sock: ArtNetSocket, target: tuple[str, int], pipeline: P
 
 def run_pattern(rig: Rig, pattern: Pattern, target: tuple[str, int], raw: bool = False,
                 seconds: float | None = None, log: Log = print) -> None:
-    """Send a test pattern. raw=True skips smoothing and the flash guard (fake Unreal)."""
+    """raw = no safety, to fake Unreal"""
     pipeline = Pipeline(rig)
     sock = ArtNetSocket(bind_port=PORT, fallback_to_any_port=True)
     log(f"sending to {target[0]}:{target[1]} universe {rig.network.universe} "
@@ -72,7 +72,7 @@ def run_pattern(rig: Rig, pattern: Pattern, target: tuple[str, int], raw: bool =
 
 def run_proxy(rig: Rig, target: tuple[str, int], listen: tuple[str, int],
               seconds: float | None = None, log: Log = print) -> None:
-    """Receive Art-Net (from Unreal), make it safe, forward it to the ODE."""
+    """Unreal -> safety -> ODE"""
     net, safety = rig.network, rig.safety
     if listen[1] == target[1] and target[0] in ("127.0.0.1", "localhost"):
         raise ValueError("proxy would send to its own port — use different ports")
@@ -133,7 +133,7 @@ def run_proxy(rig: Rig, target: tuple[str, int], listen: tuple[str, int],
 def run_monitor(rig: Rig, listen: tuple[str, int], universe: int,
                 fps: float = 15.0, seconds: float | None = None,
                 out=sys.stdout) -> None:
-    """Draw every patched fixture in the terminal from incoming Art-Net."""
+    """shows the lights in the terminal"""
     sock = ArtNetSocket(*listen)
     frame = bytes(512)
     source, count, rate = "-", 0, 0

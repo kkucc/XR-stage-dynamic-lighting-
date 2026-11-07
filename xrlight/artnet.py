@@ -1,9 +1,4 @@
-"""Minimal Art-Net: only ArtDmx packets, which is all this project needs.
-
-Packet layout (Art-Net 4): "Art-Net\\0", OpCode 0x5000 (little endian),
-protocol version 14 (big endian), sequence, physical, 15-bit port-address
-(SubUni low byte, Net high byte), data length (big endian, even, 2..512), data.
-"""
+"""Art-Net, only the ArtDmx packets."""
 from __future__ import annotations
 
 import select
@@ -33,7 +28,7 @@ def build_artdmx(universe: int, data: bytes, sequence: int = 0, physical: int = 
 
 
 def parse_artdmx(packet: bytes) -> tuple[int, bytes] | None:
-    """Return (universe, dmx data) for an ArtDmx packet, None for anything else."""
+    """(universe, data) or None"""
     if len(packet) < 18 or packet[:8] != HEADER:
         return None
     if struct.unpack_from("<H", packet, 8)[0] != OP_DMX:
@@ -54,8 +49,6 @@ class PortBusyError(OSError):
 
 
 class ArtNetSocket:
-    """One UDP socket for sending and (optionally) receiving ArtDmx."""
-
     def __init__(self, bind_ip: str = "0.0.0.0", bind_port: int = PORT,
                  fallback_to_any_port: bool = False):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -74,11 +67,10 @@ class ArtNetSocket:
         self._sequence = 0
 
     def send(self, target: tuple[str, int], universe: int, data: bytes) -> None:
-        self._sequence = self._sequence % 255 + 1   # 1..255; 0 would disable sequencing
+        self._sequence = self._sequence % 255 + 1   # 0 is not allowed
         self.sock.sendto(build_artdmx(universe, data, self._sequence), target)
 
     def receive(self, timeout: float) -> list[tuple[int, bytes, tuple[str, int]]]:
-        """Wait up to `timeout` seconds, then return every ArtDmx packet waiting."""
         packets = []
         ready, _, _ = select.select([self.sock], [], [], max(0.0, timeout))
         if not ready:
@@ -88,7 +80,7 @@ class ArtNetSocket:
                 raw, addr = self.sock.recvfrom(1024)
             except (BlockingIOError, InterruptedError):
                 break
-            except ConnectionResetError:   # ICMP "port unreachable" on some systems
+            except ConnectionResetError:
                 continue
             parsed = parse_artdmx(raw)
             if parsed:

@@ -1,8 +1,4 @@
-"""Colour helpers for turning a sampled scene colour into fixture states.
-
-Pixels from Unreal render targets or video are sRGB / Rec.709 encoded. Light
-adds up in *linear* space, so every pipeline here starts with srgb_to_linear.
-"""
+"""Colour stuff. Pixels are sRGB, light adds up in linear, so convert first."""
 from __future__ import annotations
 
 from .rig import DIMMER, Profile, State, clamp01
@@ -49,36 +45,27 @@ def rgb_to_xy(linear_rgb: Rgb) -> tuple[float, float]:
 
 
 def cct_from_xy(x: float, y: float) -> float:
-    """Correlated colour temperature (McCamy's approximation), clamped to 1000-25000 K."""
+    """colour temperature (McCamy)"""
     n = (x - 0.3320) / (0.1858 - y)
     cct = 449.0 * n ** 3 + 3525.0 * n ** 2 + 6823.3 * n + 5520.33
     return min(max(cct, 1000.0), 25000.0)
 
 
 def split_white(r: float, g: float, b: float) -> tuple[float, float, float, float]:
-    """Move the common part of R, G and B to a white emitter."""
+    """put the shared part of rgb into white"""
     w = min(r, g, b)
     return r - w, g - w, b - w, w
 
 
 def mired_mix(target_k: float, cool_k: float, warm_k: float) -> tuple[float, float]:
-    """Weights (cool, warm) for two white emitters, interpolated in mired.
-
-    Assumes both emitters are equally bright; replace with measured values
-    once the real fixtures have been calibrated.
-    """
+    """cool/warm mix in mired. guessing both are equally bright, need to measure"""
     m_target, m_cool, m_warm = 1e6 / target_k, 1e6 / cool_k, 1e6 / warm_k
     t = clamp01((m_target - m_cool) / (m_warm - m_cool))
     return 1.0 - t, t
 
 
 def colour_to_state(profile: Profile, linear_rgb: Rgb, level: float) -> State:
-    """Approximate a linear RGB colour at brightness `level` with this fixture.
-
-    RGB(W) fixtures mix the colour directly; white-only fixtures with a cool and
-    a warm emitter reproduce its colour temperature instead. This is the
-    uncalibrated starting point — per-fixture calibration comes later.
-    """
+    """colour + level -> fixture state. white-only lights just get the temperature"""
     state = profile.zero_state()
     peak = max(linear_rgb)
     level = clamp01(level)
@@ -118,7 +105,7 @@ def colour_to_state(profile: Profile, linear_rgb: Rgb, level: float) -> State:
 
 
 def display_colour(profile: Profile, state: State) -> Rgb:
-    """Rough sRGB colour of a fixture state, for drawing it in the terminal."""
+    """roughly what colour it is, for the monitor"""
     r = g = b = 0.0
     for c in profile.free:
         if c.display and c.attr != DIMMER:

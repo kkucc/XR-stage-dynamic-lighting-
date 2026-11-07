@@ -1,12 +1,7 @@
-"""Fixture profiles and the stage patch.
+"""Profiles and the patch.
 
-A *state* is what the software wants a fixture to do, as a dict of attribute
-values between 0 and 1, for example {"red": 1.0, "dimmer": 0.5}. The rig turns
-states into a 512-byte DMX frame (render) and a received frame back into states
-(decode). Locked channels are always rendered with their fixed value: the
-profile's `lock`, or the fixture's `fixed` value for that attribute if it has one.
-Only `follow` and `calibrate` may move a head, by passing `moves` to render(); that
-override is limited to the locked pan and tilt channels (MOVE_ATTRS).
+state = dict of 0..1 values like {"red": 1.0, "dimmer": 0.5}.
+Locked channels always send their fixed value, only pan/tilt can be moved (by follow/calibrate).
 """
 from __future__ import annotations
 
@@ -19,7 +14,7 @@ except ModuleNotFoundError:  # Python < 3.11
     import tomli as tomllib
 
 DIMMER = "dimmer"
-MOVE_ATTRS = ("pan", "tilt")   # the only locked channels a runtime move may override
+MOVE_ATTRS = ("pan", "tilt")   # only these locked ones can move
 UNIVERSE_SIZE = 512
 
 State = dict[str, float]
@@ -31,13 +26,13 @@ def clamp01(value: float) -> float:
 
 @dataclass(frozen=True)
 class Channel:
-    offset: int                      # 1-based position inside the fixture
+    offset: int                      # starts at 1
     attr: str                        # "red", "dimmer", "strobe", ...
-    lock: int | None = None          # fixed DMX value; locked channels ignore input
-    min: int = 0                     # attribute value 0 maps to this DMX value
-    max: int = 255                   # attribute value 1 maps to this DMX value
-    display: tuple[float, float, float] | None = None   # rough colour for the monitor
-    cct: float | None = None         # colour temperature of a white emitter (K)
+    lock: int | None = None          # fixed value
+    min: int = 0
+    max: int = 255
+    display: tuple[float, float, float] | None = None   # for the monitor
+    cct: float | None = None         # K
     note: str = ""
 
     @property
@@ -81,7 +76,7 @@ class Profile:
         return {a: 0.0 for a in self.by_attr}
 
     def brightness(self, state: State) -> float:
-        """Rough output level 0..1: dimmer times the strongest colour channel."""
+        """dimmer * strongest colour, not real measured"""
         colours = [state.get(a, 0.0) for a in self.colour_attrs]
         level = max(colours) if colours else 1.0
         if DIMMER in self.by_attr:
@@ -93,21 +88,19 @@ class Profile:
 class Fixture:
     name: str
     profile: Profile
-    address: int                     # 1-based DMX start address
+    address: int                     # start address
     zone: str = ""
     home: State = field(default_factory=dict)
-    fixed: dict[str, int] = field(default_factory=dict)   # attr -> DMX value for locked channels
+    fixed: dict[str, int] = field(default_factory=dict)   # overrides for locked channels
 
     @property
     def last_address(self) -> int:
         return self.address + self.profile.footprint - 1
 
     def index(self, channel: Channel) -> int:
-        """0-based index of a channel inside the 512-byte universe."""
         return self.address - 1 + channel.offset - 1
 
     def lock_value(self, channel: Channel) -> int | None:
-        """DMX value of a locked channel on this fixture (None for free channels)."""
         if not channel.locked:
             return None
         return self.fixed.get(channel.attr, channel.lock)
@@ -115,11 +108,7 @@ class Fixture:
 
 @dataclass(frozen=True)
 class Zone:
-    """Part of the captured picture that drives one fixture in `screen` mode.
-
-    rect = (x0, y0, x1, y1) as fractions 0..1 of the display, y = 0 at the top.
-    gain (0..2) multiplies the zone's brightness level, on top of the global --gain.
-    """
+    """part of the screen for one light. rect is 0..1, y=0 is top"""
     fixture: str
     rect: tuple[float, ...]
     gain: float = 1.0
@@ -127,10 +116,7 @@ class Zone:
 
 @dataclass
 class Screen:
-    """Brightness curve for `screen` mode, applied to each zone's luminance L (0..1).
-
-    curve(L) = (max(0, L - black_floor) / (1 - black_floor)) ** gamma
-    """
+    """brightness curve for screen mode"""
     gamma: float = 2.0
     black_floor: float = 0.08
 
@@ -141,11 +127,10 @@ class Screen:
 
 @dataclass
 class Follow:
-    """`xrlight follow`: the moving heads aim at a tracked helmet (OSC from Unreal)."""
     osc_port: int = 9000
-    follow_level: float = 0.5          # head brightness while following, 0..1
-    max_steps_per_second: float = 30.0  # pan/tilt speed limit, DMX steps per second
-    hold_s: float = 0.5                 # no helmet data for this long -> hold position
+    follow_level: float = 0.5          # brightness
+    max_steps_per_second: float = 30.0  # speed limit
+    hold_s: float = 0.5                 # no data this long -> hold
 
 
 @dataclass
@@ -215,7 +200,7 @@ class Rig:
         self.zones = zones or []
         self.screen = screen or Screen()
         self.follow = follow or Follow()
-        self.config_dir = config_dir         # folder of stage.toml (calibration lives next to it)
+        self.config_dir = config_dir         # calibration is next to it
 
     @classmethod
     def load(cls, path: str | Path) -> "Rig":
@@ -229,7 +214,7 @@ class Rig:
             if key not in profiles:
                 profiles[key] = load_profile(profile_dir / f"{key}.toml")
             home = {k: clamp01(float(v)) for k, v in raw.get("home", {}).items()}
-            fixed = dict(raw.get("fixed", {}))          # checked in problems()
+            fixed = dict(raw.get("fixed", {}))
             fixtures.append(Fixture(raw["name"], profiles[key], int(raw["address"]),
                                     raw.get("zone", ""), home, fixed))
         zones = [Zone(str(raw["fixture"]), tuple(float(v) for v in raw["rect"]),
@@ -307,7 +292,7 @@ class Rig:
         raise KeyError(name)
 
     def heads(self) -> list[Fixture]:
-        """Fixtures whose profile has locked pan and tilt channels."""
+        """lights with pan and tilt"""
         return [f for f in self.fixtures
                 if all(any(c.locked and c.attr == a for c in f.profile.channels)
                        for a in MOVE_ATTRS)]
@@ -323,11 +308,7 @@ class Rig:
 
     def render(self, states: dict[str, State], base: bytes | None = None,
                moves: dict[str, dict[str, float]] | None = None) -> bytearray:
-        """Build a DMX frame. Channels outside the patch keep their value from `base`.
-
-        `moves` ({fixture: {"pan": dmx, "tilt": dmx}}) replaces the locked value of pan
-        and tilt for this frame only. Any other attribute in it is ignored.
-        """
+        """states -> DMX frame. moves can only change pan/tilt"""
         frame = bytearray(UNIVERSE_SIZE)
         if base is not None:
             frame[:min(len(base), UNIVERSE_SIZE)] = base[:UNIVERSE_SIZE]
@@ -343,7 +324,7 @@ class Rig:
         return frame
 
     def decode(self, frame: bytes) -> dict[str, State]:
-        """Read attribute values of every patched fixture from a received frame."""
+        """DMX frame -> states"""
         padded = bytes(frame[:UNIVERSE_SIZE]).ljust(UNIVERSE_SIZE, b"\x00")
         return {f.name: {c.attr: c.from_dmx(padded[f.index(c)]) for c in f.profile.free}
                 for f in self.fixtures}

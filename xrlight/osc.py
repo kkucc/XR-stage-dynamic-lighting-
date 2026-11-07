@@ -1,9 +1,5 @@
-"""Minimal OSC 1.0 over UDP: just enough for the helmet position from Unreal.
-
-A message is an address ("/xr/helmet"), a type tag string (",fff") and the
-arguments, each part padded to a multiple of 4 bytes, numbers big endian.
-Only int32 ("i") and float32 ("f") arguments are supported; a message with any
-other type is ignored. Bundles ("#bundle") are unpacked, timetags ignored.
+"""Small OSC over UDP, only for the helmet position from Unreal.
+Only int and float, anything else gets ignored.
 """
 from __future__ import annotations
 
@@ -19,7 +15,7 @@ Message = tuple[str, list[float]]
 
 
 def _pad(b: bytes) -> bytes:
-    """Null-terminate and pad an OSC string to a multiple of 4 bytes."""
+    """pad to 4 bytes"""
     b += b"\x00"
     return b + b"\x00" * (-len(b) % 4)
 
@@ -40,7 +36,7 @@ def build_message(address: str, *args: float) -> bytes:
 
 
 def parse_packet(data: bytes) -> list[Message]:
-    """All messages in one UDP packet (one message or a bundle). Bad data -> []."""
+    """broken packet -> []"""
     try:
         if data.startswith(b"#bundle\x00"):
             out, pos = [], 16                 # "#bundle\0" + 8-byte timetag
@@ -68,10 +64,7 @@ def parse_packet(data: bytes) -> list[Message]:
 
 
 class HelmetReceiver:
-    """Listens for /xr/helmet x y z (cm) and keeps the latest position.
-
-    Call poll() every frame; it never blocks longer than `timeout`.
-    """
+    """keeps the last /xr/helmet x y z (cm), call poll() every frame"""
 
     def __init__(self, port: int, ip: str = "0.0.0.0", clock=time.perf_counter):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -86,7 +79,7 @@ class HelmetReceiver:
         self.position: tuple[float, float, float] | None = None
         self.received_at: float | None = None
         self.source: str = "-"
-        self.count = 0                         # helmet messages since take_count()
+        self.count = 0
 
     def poll(self, timeout: float = 0.0) -> None:
         ready, _, _ = select.select([self.sock], [], [], max(0.0, timeout))
@@ -107,7 +100,7 @@ class HelmetReceiver:
                     self.count += 1
 
     def age(self, now: float | None = None) -> float | None:
-        """Seconds since the last helmet message (None if there never was one)."""
+        """seconds since last message"""
         if self.received_at is None:
             return None
         return (self.clock() if now is None else now) - self.received_at
@@ -132,10 +125,10 @@ class OscSender:
         self.sock.close()
 
 
-# --- commands that need no DMX ------------------------------------------------------
+# no DMX here
 
 def run_helmet(port: int, seconds: float | None = None, log=print) -> None:
-    """`xrlight helmet`: print the received helmet position and message rate. No DMX."""
+    """just prints where the helmet is"""
     receiver = HelmetReceiver(port)
     log(f"helmet: listening for {HELMET_ADDRESS} on UDP {receiver.port} (no DMX is sent)")
     start = time.perf_counter()
@@ -162,7 +155,7 @@ def run_helmet(port: int, seconds: float | None = None, log=print) -> None:
 def run_fake_helmet(target: tuple[str, int], radius: float = 150.0, period_s: float = 30.0,
                     rate: float = 50.0, height: float = 170.0, seconds: float | None = None,
                     log=print) -> None:
-    """`xrlight fake-helmet`: a helmet walking a slow circle around (0, 0), for testing."""
+    """fake helmet walking in a circle, for testing at home"""
     sender = OscSender(target)
     log(f"fake helmet -> {target[0]}:{target[1]}: circle r {radius:g} cm, "
         f"{period_s:g} s per lap, {rate:g} msg/s")

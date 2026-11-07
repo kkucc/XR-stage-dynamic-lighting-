@@ -1,4 +1,4 @@
-"""Test patterns. Each pattern maps time t (seconds) to (targets, label)."""
+"""Test patterns, time -> (targets, label)."""
 from __future__ import annotations
 
 from typing import Callable
@@ -9,7 +9,7 @@ from .rig import Rig, State
 Targets = dict[str, State]
 Pattern = Callable[[Rig, float], tuple[Targets, str]]
 
-# sRGB colours as if they were sampled from the LED wall
+# like colours from the wall
 LOOKS = {
     "daylight": (1.00, 0.97, 0.92),
     "sunset":   (1.00, 0.45, 0.15),
@@ -23,7 +23,7 @@ def home(rig: Rig, t: float) -> tuple[Targets, str]:
 
 
 def identify(rig: Rig, t: float, step_s: float = 2.0, level: float = 0.3) -> tuple[Targets, str]:
-    """Light one fixture at a time at a low level — use this to check the patch."""
+    """one light at a time, to check the patch"""
     targets = rig.zero_states()
     f = rig.fixtures[int(t // step_s) % len(rig.fixtures)]
     targets[f.name] = colour_to_state(f.profile, (1.0, 1.0, 1.0), level)
@@ -32,7 +32,7 @@ def identify(rig: Rig, t: float, step_s: float = 2.0, level: float = 0.3) -> tup
 
 def palette(rig: Rig, t: float, hold_s: float = 6.0, fade_s: float = 2.0,
             level: float = 0.6) -> tuple[Targets, str]:
-    """Cycle through scene colours; every fixture renders them its own way."""
+    """goes through the colours"""
     names = list(LOOKS)
     period = hold_s + fade_s
     i = int(t // period) % len(names)
@@ -47,7 +47,7 @@ def palette(rig: Rig, t: float, hold_s: float = 6.0, fade_s: float = 2.0,
 
 
 def flash_test(rig: Rig, t: float, hz: float = 10.0) -> tuple[Targets, str]:
-    """Request a full white strobe — the safety layer must slow it down."""
+    """full strobe, safety should slow it down"""
     on = int(t * hz * 2) % 2 == 0
     targets = {f.name: colour_to_state(f.profile, (1.0, 1.0, 1.0), 1.0 if on else 0.0)
                for f in rig.fixtures}

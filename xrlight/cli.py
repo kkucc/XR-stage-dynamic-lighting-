@@ -13,7 +13,7 @@ from .rig import Rig
 from .runner import run_monitor, run_pattern, run_proxy
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "config" / "stage.toml"
-LEVEL_PATTERNS = {"identify", "palette"}   # patterns that take a level argument
+LEVEL_PATTERNS = {"identify", "palette"}   # these take --level
 
 
 def cmd_check(rig: Rig, args) -> None:
@@ -52,7 +52,7 @@ def cmd_check(rig: Rig, args) -> None:
 
 def cmd_screen(rig: Rig, args, target: tuple[str, int]) -> int:
     try:
-        from . import screen     # needs numpy and mss; only loaded for this command
+        from . import screen     # numpy + mss
     except ImportError as exc:
         print(f"screen mode needs numpy and mss ({exc}): pip install -r requirements.txt",
               file=sys.stderr)
@@ -76,7 +76,7 @@ def cmd_screen(rig: Rig, args, target: tuple[str, int]) -> int:
 
 def cmd_head(rig: Rig, args, target: tuple[str, int]) -> int:
     try:
-        from . import head       # needs numpy and scipy; only loaded for these commands
+        from . import head       # numpy + scipy
     except ImportError as exc:
         print(f"{args.command} needs numpy and scipy ({exc}): pip install -r requirements.txt",
               file=sys.stderr)

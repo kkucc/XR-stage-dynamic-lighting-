@@ -1,19 +1,9 @@
-"""Head follow: the moving heads aim at a tracked helmet.
+"""Moving heads follow the helmet.
 
-There is no geometry model. A head is calibrated by teaching: the helmet stands at
-a spot, the head is aimed at it by hand, and the pair (helmet x, y) -> (pan, tilt)
-is recorded. At runtime pan/tilt are interpolated from the helmet's floor position,
-piecewise-linear over a Delaunay triangulation of the taught points; height is
-ignored. Outside the taught area the nearest point on its edge is used, and the
-result is clamped to the range of taught pan/tilt values, so a head never points
-anywhere it was not aimed by hand.
-
-pan and tilt stay locked channels. They only move through Rig.render(moves=...),
-which can override nothing but pan and tilt. Movement is smoothed and limited to
-`follow.max_steps_per_second` DMX steps per second (`calibrate`: 5 steps per frame).
-
-numpy is needed here and scipy for the triangulation; the CLI imports this module
-only for `calibrate` and `follow`.
+No real geometry, you teach it: stand somewhere, aim the head by hand, save
+(x, y) -> (pan, tilt). Then it interpolates between the saved points (Delaunay),
+height ignored. Outside the points it uses the closest edge and never goes past
+the pan/tilt you taught, so it can't point somewhere weird.
 """
 from __future__ import annotations
 
@@ -38,20 +28,20 @@ from .safety import Pipeline
 WHITE = (1.0, 1.0, 1.0)
 CALIBRATE_LEVEL = 0.4
 CALIBRATE_STEPS_PER_FRAME = 5
-RECORD_MAX_AGE_S = 0.5        # calibrate: helmet data must be this fresh to record a point
-SAME_SPOT_CM = 20.0           # a point this close to an earlier one replaces it
-RETURN_TIMEOUT_S = 15.0       # on exit, give up waiting for the heads to reach home after this
+RECORD_MAX_AGE_S = 0.5        # helmet data older than this cant be recorded
+SAME_SPOT_CM = 20.0           # closer than this = same spot, replaces old point
+RETURN_TIMEOUT_S = 15.0       # stop waiting for heads to go home
 
-Pos = tuple[float, float]     # (pan, tilt) in DMX values
+Pos = tuple[float, float]     # pan, tilt
 
 
-# --- calibration files ------------------------------------------------------------
+# calibration files
 
 @dataclass(frozen=True)
 class CalPoint:
-    x: float                  # helmet floor position, cm, stage-local
+    x: float                  # cm
     y: float
-    pan: int                  # DMX 0..255
+    pan: int                  # 0..255
     tilt: int
 
 
@@ -86,10 +76,7 @@ def save_calibration(path: Path, head: str, points: list[CalPoint]) -> None:
 
 
 def merge_same_spot(points: list[CalPoint]) -> list[CalPoint]:
-    """Keep one point per spot: a later point within SAME_SPOT_CM replaces an earlier one.
-
-    Pressing Enter again without walking means the aim was corrected, so the last one wins.
-    """
+    """if you press Enter again on the same spot the newest one wins"""
     out: list[CalPoint] = []
     for p in points:
         out = [q for q in out if math.hypot(q.x - p.x, q.y - p.y) >= SAME_SPOT_CM]
@@ -98,7 +85,7 @@ def merge_same_spot(points: list[CalPoint]) -> list[CalPoint]:
 
 
 def parse_colour(text: str) -> Rgb:
-    """'1a2cff' or '#1a2cff' (sRGB hex) -> linear RGB."""
+    """hex like 1a2cff -> linear rgb"""
     h = text.strip().removeprefix("#")
     if len(h) != 6:
         raise ValueError(f"colour must be 6 hex digits like 1a2cff, got {text!r}")
@@ -108,10 +95,10 @@ def parse_colour(text: str) -> Rgb:
     return srgb_to_linear(rgb)
 
 
-# --- interpolation ----------------------------------------------------------------
+# interpolation
 
 class Interpolator:
-    """Piecewise-linear pan/tilt from helmet (x, y) over the taught points."""
+    """helmet x, y -> pan, tilt"""
 
     def __init__(self, points: list[CalPoint]):
         from scipy.spatial import Delaunay, QhullError
@@ -124,7 +111,7 @@ class Interpolator:
             self.tri = Delaunay(self.xy)
         except QhullError as exc:
             raise ValueError("calibration points lie on one line; spread them over the floor") from exc
-        self.edges = self.tri.convex_hull            # hull edges as pairs of point indices
+        self.edges = self.tri.convex_hull
         self.lo = self.values.min(axis=0)
         self.hi = self.values.max(axis=0)
 
@@ -156,15 +143,10 @@ def clamp_to_range(v, lo, hi) -> np.ndarray:
     return np.minimum(np.maximum(np.asarray(v, float), lo), hi)
 
 
-# --- motion -------------------------------------------------------------------------
+# motion
 
 class HeadMotion:
-    """Pan/tilt position that follows a target smoothly and at a limited speed.
-
-    The target goes through an exponential filter (time constant tau_s), then the
-    position moves towards it by at most `max_step` DMX steps per call. target=None
-    holds the current position.
-    """
+    """smooth pan/tilt with a speed limit, target None = stay where you are"""
 
     def __init__(self, start: Pos, max_step: float, tau_s: float = 0.0):
         self.pos = np.array(start, float)
@@ -186,7 +168,7 @@ class HeadMotion:
 
 
 def home_position(f: Fixture) -> Pos:
-    """Where the head sits when nothing moves it: its locked (or `fixed`) pan/tilt."""
+    """pan/tilt from the profile or `fixed`"""
     by_attr = {c.attr: c for c in f.profile.channels if c.locked}
     return float(f.lock_value(by_attr["pan"])), float(f.lock_value(by_attr["tilt"]))
 
@@ -197,10 +179,10 @@ def moves_of(heads: dict[str, HeadMotion]) -> dict[str, dict[str, float]]:
 
 def return_home(rig: Rig, sock: ArtNetSocket, target: tuple[str, int], pipeline: Pipeline,
                 motions: dict[str, HeadMotion], log: Log) -> None:
-    """Fade the light to the home look while the heads move back to their home position."""
+    """heads go back home and light fades to home look"""
     homes = {name: home_position(rig.fixture(name)) for name in motions}
     dt = 1.0 / rig.network.fps
-    for m in motions.values():                   # always at follow speed, never faster
+    for m in motions.values():                   # not faster than follow speed
         m.max_step = min(m.max_step, rig.follow.max_steps_per_second * dt)
     end = time.perf_counter() + RETURN_TIMEOUT_S
     fade_end = time.perf_counter() + 1.5
@@ -217,7 +199,7 @@ def return_home(rig: Rig, sock: ArtNetSocket, target: tuple[str, int], pipeline:
         time.sleep(max(0.0, next_tick + dt - time.perf_counter()))
 
 
-# --- follow -------------------------------------------------------------------------
+# follow
 
 @dataclass
 class FollowHead:
@@ -228,14 +210,9 @@ class FollowHead:
 
 
 class FollowController:
-    """Turns the latest helmet position into fixture targets and pan/tilt moves.
+    """helmet -> what the lights and heads do.
 
-    helmet data fresher than hold_s   -> follow: aim at the helmet, light at follow_level
-    older than hold_s                 -> hold: keep position, light stays on
-    older than safety.input_timeout_s -> home: back to home position, home look
-    (no data yet counts as timed out)
-    With others_off, every fixture except the followed heads gets a zero state
-    instead of its home look. `colour` is the heads' light colour (linear RGB).
+    fresh data -> follow, older than hold_s -> hold, older than input_timeout_s -> home
     """
 
     def __init__(self, rig: Rig, calibrations: dict[str, list[CalPoint]],
@@ -301,7 +278,7 @@ def load_calibrations(rig: Rig, log: Log = print) -> dict[str, list[CalPoint]]:
 def run_follow(rig: Rig, target: tuple[str, int], seconds: float | None = None,
                others_off: bool = False, heads: list[str] | None = None,
                colour: Rgb = WHITE, log: Log = print) -> int:
-    """heads: only these follow (default: every calibrated head)."""
+    """heads = only these follow, otherwise all calibrated ones"""
     if heads:
         known = [f.name for f in rig.heads()]
         unknown = [h for h in heads if h not in known]
@@ -356,14 +333,14 @@ def run_follow(rig: Rig, target: tuple[str, int], seconds: float | None = None,
     return 0
 
 
-# --- calibrate ------------------------------------------------------------------------
+# calibrate
 
 KEY_PATTERN = re.compile(r"\x1b\[1;2([ABCD])|\x1b\[([ABCD])|(\r|\n)|(.)", re.S)
 ARROWS = {"A": "up", "B": "down", "C": "right", "D": "left"}
 
 
 def parse_keys(text: str) -> list[str]:
-    """Terminal input -> key names: up/down/left/right, shift-up..., enter, or the character."""
+    """terminal input -> key names"""
     keys = []
     for shift, arrow, enter, char in KEY_PATTERN.findall(text):
         if shift:
@@ -378,21 +355,18 @@ def parse_keys(text: str) -> list[str]:
 
 
 class Calibrator:
-    """Key handling for `calibrate`, separate from the terminal so it can be tested.
-
-    left/right = pan -/+, up/down = tilt +/-, 1 DMX step (Shift: 5).
-    """
+    """keys for calibrate. arrows move 1 step, with shift 5"""
 
     NUDGE = {"left": (-1, 0), "right": (1, 0), "up": (0, 1), "down": (0, -1)}
 
     def __init__(self, start: Pos, points: list[CalPoint] | None = None):
         self.aim = [int(round(start[0])), int(round(start[1]))]
         self.points = list(points or [])
-        self.result: str | None = None      # "save" or "quit" once finished
+        self.result: str | None = None      # "save" or "quit"
 
     def handle(self, key: str, helmet: tuple[float, float, float] | None, age: float | None,
                moving: bool) -> str:
-        """Apply one key; returns a message for the status line ("" if none)."""
+        """returns text for the status line"""
         base = key.removeprefix("shift-")
         if base in self.NUDGE:
             step = 5 if key.startswith("shift-") else 1
@@ -423,7 +397,7 @@ class Calibrator:
 
 
 class _RawTerminal:
-    """Single-key input without echo; restores the terminal on exit."""
+    """read keys one by one"""
 
     def __enter__(self):
         import termios

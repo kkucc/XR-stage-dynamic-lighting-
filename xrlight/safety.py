@@ -1,17 +1,6 @@
-"""Safety layer between "what we want" and "what we send".
+"""Safety: master level, smoothing, flash guard (max 3 flashes a second).
 
-Every frame goes through, per fixture:
-  1. master level      — global brightness ceiling
-  2. smoothing         — exponential filter, removes jitter and hard cuts
-  3. flash guard       — at most N flashes in any 1-second window
-Locked channels (strobe, mode, unknown) are handled by the rig and can never
-be driven at all. Range limits (min/max) are applied when rendering DMX.
-
-A flash is a pair of opposite brightness changes, each at least `threshold`
-(10% by default), which follows the usual photosensitivity guidance of at most
-three flashes per second. The guard works on the values after 8-bit rounding,
-i.e. what the fixtures actually receive. Brightness is the DMX-level estimate
-from Profile.brightness, not measured luminance, so treat it as an approximation.
+flash = up and down by at least 10%. brightness is a guess, not measured.
 """
 from __future__ import annotations
 
@@ -22,20 +11,12 @@ from .rig import DIMMER, Profile, Rig, State, clamp01
 
 
 class FlashGuard:
-    """Limits how often one fixture's brightness may swing up and down.
+    """counts flashes per light (zigzag between peaks), too many -> hold it.
 
-    Turning points are tracked with hysteresis ("zigzag"): a change only counts
-    as a transition once brightness has moved at least `threshold` away from the
-    last peak or trough. Tiny dips therefore never reset the count. Two
-    transitions make one flash; at most 2 x max_flashes_per_second transitions
-    are allowed in any `window_s`. When the budget is used up, brightness is
-    kept inside a band around the last extreme until the window frees up.
-
-    Call limit() with the brightness you would like to show, then commit() with
-    the brightness that was actually sent (after 8-bit rounding).
+    limit() what you want, then commit() what was really sent.
     """
 
-    CLAMP_MARGIN = 0.85   # blocked output stays within 85% of the threshold (room for rounding)
+    CLAMP_MARGIN = 0.85   # bit under threshold because of rounding
 
     def __init__(self, max_flashes_per_second: float = 3.0, threshold: float = 0.10,
                  window_s: float = 1.0):
@@ -43,9 +24,9 @@ class FlashGuard:
         self.threshold = threshold
         self.window = window_s
         self.events: deque[float] = deque()
-        self.direction = 0        # +1 rising, -1 falling, 0 no transition yet
-        self.extreme = 0.0        # running peak (rising) or trough (falling)
-        self.lo = self.hi = None  # range seen before the first transition
+        self.direction = 0        # 1 up, -1 down, 0 not yet
+        self.extreme = 0.0        # last peak or bottom
+        self.lo = self.hi = None
         self.blocked_frames = 0
 
     def _purge(self, now: float) -> None:
@@ -100,14 +81,14 @@ class FlashGuard:
                 self.events.append(now)
 
     def process(self, proposed: float, now: float) -> float:
-        """limit() and commit() in one go, for signals without rounding."""
+        """limit + commit"""
         allowed = self.limit(proposed, now)
         self.commit(allowed, now)
         return allowed
 
 
 def quantize(profile: Profile, state: State) -> State:
-    """Round every value to what the fixture will really receive over 8-bit DMX."""
+    """round to 8 bit like the light gets it"""
     return {a: c.from_dmx(c.to_dmx(state.get(a, 0.0))) for a, c in profile.by_attr.items()}
 
 
@@ -116,9 +97,9 @@ def _lerp(a: State, b: State, t: float) -> State:
 
 
 def blend_to_brightness(profile: Profile, prev: State, proposed: State, target: float) -> State:
-    """Move from `prev` towards `proposed` only as far as brightness `target` allows."""
+    """go towards proposed only until target brightness"""
     b_prev, b_prop = profile.brightness(prev), profile.brightness(proposed)
-    if (target - b_prev) * (target - b_prop) > 0:           # target outside the segment
+    if (target - b_prev) * (target - b_prop) > 0:
         return dict(prev) if abs(target - b_prev) < abs(target - b_prop) else dict(proposed)
     lo, hi = 0.0, 1.0
     rising = b_prop > b_prev
@@ -139,7 +120,7 @@ class Pipeline:
         self.dt = 1.0 / (fps or rig.network.fps)
         tau = s.smoothing_ms / 1000.0
         self.alpha = 1.0 if tau <= 0 else 1.0 - math.exp(-self.dt / tau)
-        self.smoothed = rig.zero_states()   # start dark and fade in
+        self.smoothed = rig.zero_states()   # start dark
         self.out = rig.zero_states()
         self.guards = {f.name: FlashGuard(s.max_flashes_per_second, s.flash_threshold)
                        for f in rig.fixtures}
