@@ -39,7 +39,7 @@ Then Phil suggested to test the connection with Unreal by doing tracking with th
 
 So first I duplicated template 5.4 and made a blueprint
 ![blueprintv0](IMG_8047.png)
-The image doesnt really show the blueprint as it is now, there were 3 errors but I didnt update it.
+The image doesnt really show the blueprint as it is now, there were 3 errors but I didnt retook the picture.
 
 ```mermaid
 flowchart TD
